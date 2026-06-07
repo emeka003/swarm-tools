@@ -9,6 +9,7 @@
  * - swarm_query: Raw SQL for power users
  * - swarm_diagnose: Auto-diagnosis for epic/task
  * - swarm_insights: Generate learning insights
+ * - swarm_health: System health check (wraps `swarm doctor --deep`)
  */
 
 import { tool } from "@opencode-ai/plugin";
@@ -69,6 +70,11 @@ export interface SwarmInsightsArgs {
 	scope: "epic" | "project" | "recent";
 	epic_id?: string;
 	metrics: Array<"success_rate" | "avg_duration" | "conflict_rate" | "retry_rate">;
+}
+
+export interface SwarmHealthArgs {
+	deep?: boolean;
+	fix?: boolean;
 }
 
 // ============================================================================
@@ -584,6 +590,93 @@ const swarm_insights = tool({
 	},
 });
 
+/**
+ * swarm_health - System health check
+ *
+ * Wraps the swarm doctor deep command. Without `deep`, runs a fast subset
+ * (db integrity + ghost workers). With `deep=true`, runs all 6 checks:
+ *   1. Database integrity
+ *   2. Orphaned cell references
+ *   3. Dependency cycles
+ *   4. Stale file reservations
+ *   5. Zombie blocked cells
+ *   6. Ghost in-progress cells
+ *
+ * With `fix=true`, auto-repairs fixable issues (orphans, stale reservations,
+ * zombie blocked cells).
+ */
+const swarm_health = tool({
+	description:
+		"Check swarm system health. By default runs a fast subset (DB integrity). Set deep=true to run all 6 doctor checks (integrity, orphans, dependency cycles, stale reservations, zombie blocked, ghost workers). Set fix=true to auto-repair fixable issues. Returns { ok, report, error? }.",
+	args: {
+		deep: tool.schema
+			.boolean()
+			.optional()
+			.describe("Run all 6 deep health checks (default: false, fast subset)"),
+		fix: tool.schema
+			.boolean()
+			.optional()
+			.describe("Auto-repair fixable issues (default: false)"),
+	},
+	async execute(args: SwarmHealthArgs): Promise<string> {
+		try {
+			const projectPath = process.cwd();
+			// @ts-ignore - doctor.ts lives under bin/ which is outside tsconfig rootDir
+			const { runDeepChecks } = await import("../bin/commands/doctor.js");
+
+			if (args.deep) {
+				const result = await runDeepChecks(projectPath, { fix: args.fix });
+				return JSON.stringify(result, null, 2);
+			}
+
+			const { getSwarmMailLibSQL, createHiveAdapter } = await import(
+				"swarm-mail"
+			);
+
+			const swarmMail = await getSwarmMailLibSQL(projectPath);
+			const db = await swarmMail.getDatabase();
+			const hiveAdapter = createHiveAdapter(db, projectPath);
+			await hiveAdapter.runMigrations();
+
+			// @ts-ignore - doctor.ts lives under bin/ which is outside tsconfig rootDir
+			const { checkDbIntegrity, checkGhostWorkers } = await import(
+				"../bin/commands/doctor.js"
+			);
+
+			const checks = [
+				await checkDbIntegrity(db),
+				await checkGhostWorkers(db),
+			];
+
+			const passed = checks.filter((c) => c.status === "pass").length;
+			const failed = checks.filter((c) => c.status === "fail").length;
+			const warned = checks.filter((c) => c.status === "warn").length;
+
+			return JSON.stringify(
+				{
+					ok: failed === 0,
+					report: {
+						checks,
+						passed,
+						failed,
+						warned,
+						fixed: 0,
+						timestamp: new Date().toISOString(),
+						mode: "basic",
+					},
+				},
+				null,
+				2,
+			);
+		} catch (error) {
+			return JSON.stringify({
+				ok: false,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	},
+});
+
 // ============================================================================
 // Stats CLI Helpers (exported for bin/swarm.ts)
 // ============================================================================
@@ -897,4 +990,5 @@ export const observabilityTools = {
 	swarm_query,
 	swarm_diagnose,
 	swarm_insights,
+	swarm_health,
 };

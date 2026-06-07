@@ -5,22 +5,29 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { mkdirSync, rmSync } from "node:fs";
 import {
 	observabilityTools,
 	type SwarmAnalyticsArgs,
 	type SwarmQueryArgs,
 	type SwarmDiagnoseArgs,
 	type SwarmInsightsArgs,
+	type SwarmHealthArgs,
 } from "./observability-tools";
 import type { ToolContext } from "@opencode-ai/plugin";
 import {
 	closeSwarmMailLibSQL,
+	createHiveAdapter,
 	createInMemorySwarmMailLibSQL,
+	getSwarmMailLibSQL,
 	initSwarmAgent,
 	reserveSwarmFiles,
 	sendSwarmMessage,
 	type SwarmMailAdapter,
 } from "swarm-mail";
+import { runDeepChecks } from "../bin/commands/doctor.js";
 
 describe("observability-tools", () => {
 	let swarmMail: SwarmMailAdapter;
@@ -354,6 +361,147 @@ describe("observability-tools", () => {
 				// Just defining the test structure for now
 				expect(true).toBe(true);
 			});
+		});
+	});
+
+	describe("swarm_health", () => {
+		const tool = observabilityTools.swarm_health;
+		const testDir = join(tmpdir(), `swarm-health-test-${Date.now()}`);
+		const originalCwd = process.cwd();
+
+		beforeAll(() => {
+			mkdirSync(testDir, { recursive: true });
+			process.chdir(testDir);
+		});
+
+		afterAll(() => {
+			process.chdir(originalCwd);
+			rmSync(testDir, { recursive: true, force: true });
+		});
+
+		test("is defined with correct schema", () => {
+			expect(tool).toBeDefined();
+			expect(tool.description).toBeTruthy();
+			expect(tool.args).toBeDefined();
+		});
+
+		test("returns ok=true and report on healthy database", async () => {
+			const args: SwarmHealthArgs = { deep: true };
+			const result = await tool.execute(args, mockContext);
+			expect(result).toBeTruthy();
+
+			const parsed = JSON.parse(result);
+			expect(parsed).toHaveProperty("ok");
+			expect(typeof parsed.ok).toBe("boolean");
+			expect(parsed).toHaveProperty("report");
+			expect(parsed.report).toHaveProperty("checks");
+			expect(Array.isArray(parsed.report.checks)).toBe(true);
+		});
+
+		test("deep=true runs all 6 health checks", async () => {
+			const args: SwarmHealthArgs = { deep: true };
+			const result = await tool.execute(args, mockContext);
+			const parsed = JSON.parse(result);
+
+			expect(parsed.report.checks.length).toBe(6);
+		});
+
+		test("deep=false (default) runs a basic health subset", async () => {
+			const args: SwarmHealthArgs = {};
+			const result = await tool.execute(args, mockContext);
+			const parsed = JSON.parse(result);
+
+			expect(parsed).toHaveProperty("ok");
+			expect(parsed).toHaveProperty("report");
+			expect(parsed.report.checks.length).toBeLessThan(6);
+		});
+
+		test("fix=true enables auto-repair", async () => {
+			const args: SwarmHealthArgs = { deep: true, fix: true };
+			const result = await tool.execute(args, mockContext);
+			const parsed = JSON.parse(result);
+
+			expect(parsed).toHaveProperty("ok");
+			expect(parsed).toHaveProperty("report");
+			expect(parsed.report).toHaveProperty("fixed");
+		});
+
+		test("returns graceful error when deep check fails", async () => {
+			const originalCwdInner = process.cwd();
+			const brokenPath = join(tmpdir(), `empty-project-${Date.now()}-${Math.random()}`);
+			mkdirSync(brokenPath, { recursive: true });
+			try {
+				process.chdir(brokenPath);
+				const args: SwarmHealthArgs = { deep: true };
+				const result = await tool.execute(args, mockContext);
+				const parsed = JSON.parse(result);
+				expect(parsed).toHaveProperty("ok");
+				expect(parsed).toHaveProperty("report");
+			} finally {
+				process.chdir(originalCwdInner);
+				rmSync(brokenPath, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("runDeepChecks (doctor programmatic API)", () => {
+		const testDir = join(tmpdir(), `run-deep-checks-test-${Date.now()}`);
+		let projectPath: string;
+
+		beforeAll(async () => {
+			mkdirSync(testDir, { recursive: true });
+			projectPath = testDir;
+
+			const swarmMail = await getSwarmMailLibSQL(projectPath);
+			const db = await swarmMail.getDatabase();
+			const adapter = createHiveAdapter(db, projectPath);
+			await adapter.runMigrations();
+		});
+
+		afterAll(async () => {
+			await closeSwarmMailLibSQL(projectPath);
+			rmSync(testDir, { recursive: true, force: true });
+		});
+
+		test("returns ok=true on a healthy database", async () => {
+			const result = await runDeepChecks(projectPath, { fix: false });
+			expect(result.ok).toBe(true);
+			expect(result.report).toBeDefined();
+			expect(result.report.checks.length).toBe(6);
+		});
+
+		test("supports --fix option for auto-repair", async () => {
+			const result = await runDeepChecks(projectPath, { fix: true });
+			expect(result.ok).toBe(true);
+			expect(result.report.fixed).toBeGreaterThanOrEqual(0);
+		});
+
+		test("returns ok=false when checks fail", async () => {
+			const brokenDir = join(tmpdir(), `run-deep-checks-broken-${Date.now()}-${Math.random()}`);
+			mkdirSync(brokenDir, { recursive: true });
+			const orphanId = `orphan-${Date.now()}-${Math.random()}`;
+			try {
+				const swarmMail = await getSwarmMailLibSQL(brokenDir);
+				const db = await swarmMail.getDatabase();
+				const adapter = createHiveAdapter(db, brokenDir);
+				await adapter.runMigrations();
+
+				await db.exec("PRAGMA foreign_keys = OFF");
+				await db.query(
+					`INSERT INTO beads (id, project_key, type, status, title, priority, parent_id, created_at, updated_at)
+					 VALUES (?, ?, 'task', 'open', 'Orphan', 1, 'nonexistent-parent', ?, ?)`,
+					[orphanId, brokenDir, Date.now(), Date.now()],
+				);
+				await db.exec("PRAGMA foreign_keys = ON");
+				await closeSwarmMailLibSQL(brokenDir);
+
+				const result = await runDeepChecks(brokenDir, { fix: false });
+				expect(result.ok).toBe(false);
+				expect(result.report.failed).toBeGreaterThan(0);
+			} finally {
+				await closeSwarmMailLibSQL(brokenDir);
+				rmSync(brokenDir, { recursive: true, force: true });
+			}
 		});
 	});
 });

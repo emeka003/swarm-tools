@@ -544,6 +544,59 @@ export async function runDoctor(
   };
 }
 
+/**
+ * Result of a deep health check - what MCP tools and programmatic callers consume.
+ */
+export interface DeepCheckResult {
+  ok: boolean;
+  report: DoctorReport;
+}
+
+/**
+ * Programmatic entry point for deep doctor checks.
+ *
+ * Connects to the swarm database at the given project path, ensures the hive
+ * schema exists, and runs all health checks. Returns a structured result
+ * suitable for MCP tool responses (e.g. `swarm_health`).
+ *
+ * Errors are returned as `{ ok: false, report, error }` rather than thrown,
+ * so callers can surface them to agents without try/catch noise.
+ */
+export async function runDeepChecks(
+  projectPath: string,
+  options: DoctorOptions = {}
+): Promise<DeepCheckResult> {
+  const { getSwarmMailLibSQL, createHiveAdapter } = await import("swarm-mail");
+
+  try {
+    const swarmMail = await getSwarmMailLibSQL(projectPath);
+    const db = await swarmMail.getDatabase();
+
+    const hiveAdapter = createHiveAdapter(db, projectPath);
+    await hiveAdapter.runMigrations();
+
+    const report = await runDoctor(db, options);
+    return {
+      ok: report.failed === 0,
+      report,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      report: {
+        checks: [],
+        passed: 0,
+        failed: 1,
+        warned: 0,
+        fixed: 0,
+        timestamp: new Date().toISOString(),
+      },
+      error: message,
+    } as DeepCheckResult & { error: string };
+  }
+}
+
 // ============================================================================
 // Output Formatting
 // ============================================================================
@@ -621,38 +674,27 @@ export function parseDoctorArgs(args: string[]): DoctorOptions {
  */
 export async function doctorDeep(args: string[] = []) {
   const options = parseDoctorArgs(args);
-
-  // Dynamic import to keep the module testable
-  const { getSwarmMailLibSQL, createHiveAdapter } = await import("swarm-mail");
-
   const projectPath = process.cwd();
 
-  try {
-    // Get database connections
-    const swarmMail = await getSwarmMailLibSQL(projectPath);
-    const db = await swarmMail.getDatabase();
+  // Reuse the programmatic API - keeps CLI and MCP tool behavior in lockstep
+  const result = await runDeepChecks(projectPath, options);
 
-    // Ensure hive schema exists
-    const hiveAdapter = createHiveAdapter(db, projectPath);
-    await hiveAdapter.runMigrations();
+  if (!result.ok && "error" in result && result.error) {
+    console.error(red(`Doctor failed: ${result.error}`));
+    process.exit(1);
+  }
 
-    // Run the doctor
-    const report = await runDoctor(db, options);
+  const { report } = result;
 
-    // Output
-    if (options.json) {
-      console.log(JSON.stringify(report, null, 2));
-    } else {
-      console.log(formatDoctorReport(report, options));
-    }
+  // Output
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatDoctorReport(report, options));
+  }
 
-    // Exit with error code if issues found
-    if (report.failed > 0 && !options.fix) {
-      process.exit(1);
-    }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(red(`Doctor failed: ${msg}`));
+  // Exit with error code if issues found
+  if (report.failed > 0 && !options.fix) {
     process.exit(1);
   }
 }
