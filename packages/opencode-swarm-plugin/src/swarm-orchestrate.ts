@@ -91,6 +91,10 @@ import {
   type VerificationGateResult,
   type VerificationStep,
 } from "./swarm-verify";
+import {
+  runQualityGates,
+  type QualityGateResult,
+} from "./quality-gates";
 
 // ============================================================================
 // Helper Functions
@@ -1247,6 +1251,47 @@ Continuing with completion, but this should be fixed for future subtasks.`;
         }
       }
 
+      // Quality Gates (optional bug scanner)
+      let qualityGateResult: QualityGateResult | null = null;
+      if (args.files_touched?.length) {
+        try {
+          qualityGateResult = await runQualityGates({
+            files: args.files_touched,
+            config: { enableBugScanner: true, maxWarnings: 10 },
+          });
+
+          if (!qualityGateResult.passed) {
+            const errorChecks = qualityGateResult.checks.filter(
+              (c) => !c.passed && c.severity === "error"
+            );
+            if (errorChecks.length > 0) {
+              return JSON.stringify(
+                {
+                  success: false,
+                  error: "Quality gate FAILED - fix issues before completing",
+                  quality_gate: {
+                    passed: false,
+                    failed_checks: errorChecks.map((c) => ({
+                      name: c.name,
+                      message: c.message,
+                      severity: c.severity,
+                    })),
+                  },
+                  hint: `Fix these issues: ${errorChecks.map((c) => `${c.name}: ${c.message?.split("\n")[0]}`).join("; ")}`,
+                },
+                null,
+                2
+              );
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "[swarm_complete] Quality gate check failed (non-fatal):",
+            error
+          );
+        }
+      }
+
       // Contract Validation - check files_touched against WorkerHandoff contract
       let contractValidation: { valid: boolean; violations: string[] } | null = null;
       let contractWarning: string | undefined;
@@ -1256,7 +1301,7 @@ Continuing with completion, but this should be fixed for future subtasks.`;
         const isSubtask = args.bead_id.includes(".");
         
         if (isSubtask) {
-          const epicId = args.bead_id.split(".")[0];
+          const contractEpicId = args.bead_id.split(".")[0];
           
           // Query decomposition event for files_owned
           const filesOwned = await getSubtaskFilesOwned(
@@ -1514,15 +1559,14 @@ This will be recorded as a negative learning signal.`;
         const memoryAvailable = await isToolAvailable("hivemind");
         if (memoryAvailable) {
           // Call hivemind store command
-          const storeResult =
-            await Bun.$`hivemind store ${memoryInfo.information} --metadata ${memoryInfo.metadata}`
-              .quiet()
-              .nothrow();
+          const storeResult = Bun.spawn(["hivemind", "store", memoryInfo.information, "--metadata", memoryInfo.metadata], { stdout: "ignore", stderr: "pipe" });
 
-          if (storeResult.exitCode === 0) {
+          const exitCode = await storeResult.exited;
+          if (exitCode === 0) {
             memoryStored = true;
           } else {
-            memoryError = `hivemind store failed: ${storeResult.stderr.toString().slice(0, 200)}`;
+            const stderrText = await new Response(storeResult.stderr).text();
+            memoryError = `hivemind store failed: ${stderrText.slice(0, 200)}`;
             console.warn(`[swarm_complete] ${memoryError}`);
           }
         } else {
@@ -1684,7 +1728,7 @@ This will be recorded as a negative learning signal.`;
       }
 
       // Extract epic ID (for message sending)
-      const epicId = args.bead_id.includes(".")
+      const messageEpicId = args.bead_id.includes(".")
         ? args.bead_id.split(".")[0]
         : args.bead_id;
 
@@ -1716,7 +1760,7 @@ This will be recorded as a negative learning signal.`;
           toAgents: [], // Thread broadcast
           subject: `Complete: ${args.bead_id}`,
           body: completionBody,
-          threadId: epicId,
+          threadId: messageEpicId,
           importance: "normal",
         });
         messageSent = true;
@@ -1762,6 +1806,17 @@ This will be recorded as a negative learning signal.`;
           : args.skip_verification
             ? { skipped: true, reason: "skip_verification=true" }
             : { skipped: true, reason: "no files_touched provided" },
+        quality_gate: qualityGateResult
+          ? {
+              passed: qualityGateResult.passed,
+              checks: qualityGateResult.checks.map((c) => ({
+                name: c.name,
+                passed: c.passed,
+                severity: c.severity,
+                message: c.message?.split("\n")[0],
+              })),
+            }
+          : { skipped: true, reason: "no files_touched provided" },
         learning_prompt: `## Reflection
 
 Did you learn anything reusable during this subtask? Consider:
@@ -3509,6 +3564,97 @@ ${args.files_context && args.files_context.length > 0 ? `## Reference Files\n\n$
   },
 });
 
+/**
+ * Rollback code changes to a previous commit.
+ *
+ * Supports three modes:
+ * 1. Revert to a specific commit (full reset)
+ * 2. Revert specific files to a commit
+ * 3. Revert to the last safety commit (auto-detected)
+ */
+export const swarm_rollback = tool({
+  description:
+    "Revert code changes to a previous commit. Use when a worker fails or produces bad output.",
+  args: {
+    project_path: tool.schema.string().describe("Project path"),
+    commit_sha: tool.schema
+      .string()
+      .optional()
+      .describe("Commit SHA to revert to (optional)"),
+    files: tool.schema
+      .array(tool.schema.string())
+      .optional()
+      .describe("Specific files to revert (optional)"),
+  },
+  async execute(args) {
+    const { project_path } = args;
+    let commitSha = args.commit_sha;
+    const files = args.files;
+
+    // If no commit_sha and no files, find last safety commit
+    if (!commitSha && (!files || files.length === 0)) {
+      try {
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execFileAsync = promisify(execFile);
+        const { stdout } = await execFileAsync(
+          "git",
+          ["log", "--all", "--oneline", "--grep=pre-worker:", "-1", "--format=%H"],
+          { cwd: project_path },
+        );
+        const sha = stdout.trim();
+        if (sha) {
+          commitSha = sha;
+        } else {
+          return JSON.stringify(
+            {
+              success: false,
+              error: "No safety commit found (commit_sha and files not provided)",
+            },
+            null,
+            2,
+          );
+        }
+      } catch (error) {
+        return JSON.stringify(
+          {
+            success: false,
+            error: `Failed to find safety commit: ${error instanceof Error ? error.message : String(error)}`,
+          },
+          null,
+          2,
+        );
+      }
+    }
+
+    let result;
+    if (files && files.length > 0 && commitSha) {
+      // Revert specific files to commit
+      const { revertFilesToCommit } = await import("./rollback.js");
+      result = await revertFilesToCommit({
+        project_path,
+        commit_sha: commitSha,
+        files,
+      });
+    } else if (commitSha) {
+      // Revert entire working tree
+      const { revertToCommit } = await import("./rollback.js");
+      result = await revertToCommit({ project_path, commit_sha: commitSha });
+    } else {
+      return JSON.stringify(
+        {
+          success: false,
+          error: "Either commit_sha or files must be provided",
+        },
+        null,
+        2,
+      );
+    }
+
+    return JSON.stringify(result, null, 2);
+  },
+});
+
 // ============================================================================
 // Export tools
 // ============================================================================
@@ -3530,4 +3676,5 @@ export const orchestrateTools = {
   swarm_branch,
   swarm_return,
   swarm_learn,
+  swarm_rollback,
 };

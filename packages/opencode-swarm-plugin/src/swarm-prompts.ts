@@ -2054,6 +2054,20 @@ export const swarm_spawn_subtask = tool({
       }
     }
 
+    // Create safety commit for rollback
+    let safetyCommitSha: string | null = null;
+    if (args.project_path) {
+      try {
+        const { createSafetyCommit } = await import("./rollback.js");
+        safetyCommitSha = await createSafetyCommit({
+          project_path: args.project_path,
+          message: `pre-worker: ${args.subtask_title}`,
+        });
+      } catch (error) {
+        console.warn("[swarm_spawn_subtask] Failed to create safety commit:", error);
+      }
+    }
+
     return JSON.stringify(
       {
         prompt,
@@ -2064,6 +2078,7 @@ export const swarm_spawn_subtask = tool({
         recovery_context: args.recovery_context,
         recommended_model: selectedModel,
         post_completion_instructions: postCompletionInstructions,
+        safety_commit_sha: safetyCommitSha,
       },
       null,
       2,
