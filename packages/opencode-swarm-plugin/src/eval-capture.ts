@@ -660,20 +660,9 @@ export async function captureCoordinatorEvent(event: CoordinatorEvent): Promise<
 
     // Append to libSQL events table
     await swarmMail.appendEvent(eventData as any);
-
-    // LEGACY: Also write to JSONL for backward compatibility during transition
-    // TODO: Remove after migration to libSQL is complete
-    ensureSessionDir();
-    const sessionPath = getSessionPath(event.session_id);
-    const line = `${JSON.stringify(event)}\n`;
-    fs.appendFileSync(sessionPath, line, "utf-8");
   } catch (error) {
-    // Fallback to JSONL-only if libSQL fails (e.g., during tests)
-    console.warn("Failed to append event to libSQL, using JSONL fallback:", error);
-    ensureSessionDir();
-    const sessionPath = getSessionPath(event.session_id);
-    const line = `${JSON.stringify(event)}\n`;
-    fs.appendFileSync(sessionPath, line, "utf-8");
+    // Non-fatal - eval capture should never block tool execution
+    console.warn("Failed to append event to libSQL:", error);
   }
 }
 

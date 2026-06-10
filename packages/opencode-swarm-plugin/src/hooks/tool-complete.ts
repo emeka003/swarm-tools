@@ -9,12 +9,13 @@ import { isHookedTool, type HookedTool } from "./constants";
 
 /**
  * Debug logger factory with namespace support.
- * Enabled via DEBUG=swarm:hooks or DEBUG=swarm:*
+ * Enabled via SWARM_DEBUG=swarm:hooks, DEBUG=swarm:hooks, or SWARM_DEBUG=swarm:*
  */
 const debug = (namespace: string) => {
+  const debugEnv = process.env.SWARM_DEBUG || process.env.DEBUG;
   const enabled =
-    process.env.DEBUG?.includes(namespace) ||
-    process.env.DEBUG?.includes("swarm:*");
+    debugEnv?.includes(namespace) ||
+    debugEnv?.includes("swarm:*");
   
   return (message: string, data?: Record<string, unknown>) => {
     if (enabled) {

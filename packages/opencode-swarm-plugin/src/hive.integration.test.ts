@@ -26,12 +26,11 @@ import {
   setHiveWorkingDirectory,
   getHiveWorkingDirectory,
   // Legacy aliases for backward compatibility tests
-  beads_link_thread,
   BeadError,
   getBeadsAdapter,
   setBeadsWorkingDirectory,
 } from "./hive";
-import type { Cell, Bead, EpicCreateResult } from "./schemas";
+import type { Cell, EpicCreateResult } from "./schemas";
 import type { HiveAdapter } from "swarm-mail";
 
 /**
@@ -605,48 +604,48 @@ describe("beads integration", () => {
     });
   });
 
-  describe("beads_link_thread", () => {
-    let testBeadId: string;
+  describe("hive_link_thread", () => {
+    let testCellId: string;
 
     beforeEach(async () => {
       const result = await hive_create.execute(
-        { title: "Thread link test bead" },
+        { title: "Thread link test cell" },
         mockContext,
       );
-      const bead = parseResponse<Bead>(result);
-      testBeadId = bead.id;
-      createdBeadIds.push(testBeadId);
+      const cell = parseResponse<Cell>(result);
+      testCellId = cell.id;
+      createdBeadIds.push(testCellId);
     });
 
-    it("links a bead to an Agent Mail thread", async () => {
+    it("links a cell to an Agent Mail thread", async () => {
       const threadId = "test-thread-123";
-      const result = await beads_link_thread.execute(
-        { bead_id: testBeadId, thread_id: threadId },
+      const result = await hive_link_thread.execute(
+        { bead_id: testCellId, thread_id: threadId },
         mockContext,
       );
 
       expect(result).toContain("Linked");
-      expect(result).toContain(testBeadId);
+      expect(result).toContain(testCellId);
       expect(result).toContain(threadId);
 
       // Verify the thread marker is in the description using adapter
-      const linkedBead = await adapter.getCell(TEST_PROJECT_KEY, testBeadId);
-      expect(linkedBead).toBeDefined();
-      expect(linkedBead!.description).toContain(`[thread:${threadId}]`);
+      const linkedCell = await adapter.getCell(TEST_PROJECT_KEY, testCellId);
+      expect(linkedCell).toBeDefined();
+      expect(linkedCell!.description).toContain(`[thread:${threadId}]`);
     });
 
     it("returns message if thread already linked", async () => {
       const threadId = "test-thread-456";
 
       // Link once
-      await beads_link_thread.execute(
-        { bead_id: testBeadId, thread_id: threadId },
+      await hive_link_thread.execute(
+        { bead_id: testCellId, thread_id: threadId },
         mockContext,
       );
 
       // Try to link again
-      const result = await beads_link_thread.execute(
-        { bead_id: testBeadId, thread_id: threadId },
+      const result = await hive_link_thread.execute(
+        { bead_id: testCellId, thread_id: threadId },
         mockContext,
       );
 
@@ -654,28 +653,28 @@ describe("beads integration", () => {
     });
 
     it("preserves existing description when linking", async () => {
-      // Update bead with a description first
+      // Update cell with a description first
       await hive_update.execute(
-        { id: testBeadId, description: "Important context here" },
+        { id: testCellId, description: "Important context here" },
         mockContext,
       );
 
       const threadId = "test-thread-789";
-      await beads_link_thread.execute(
-        { bead_id: testBeadId, thread_id: threadId },
+      await hive_link_thread.execute(
+        { bead_id: testCellId, thread_id: threadId },
         mockContext,
       );
 
       // Verify both original description and thread marker exist using adapter
-      const linkedBead = await adapter.getCell(TEST_PROJECT_KEY, testBeadId);
-      expect(linkedBead).toBeDefined();
-      expect(linkedBead!.description).toContain("Important context here");
-      expect(linkedBead!.description).toContain(`[thread:${threadId}]`);
+      const linkedCell = await adapter.getCell(TEST_PROJECT_KEY, testCellId);
+      expect(linkedCell).toBeDefined();
+      expect(linkedCell!.description).toContain("Important context here");
+      expect(linkedCell!.description).toContain(`[thread:${threadId}]`);
     });
 
-    it("throws BeadError for invalid bead ID", async () => {
+    it("throws BeadError for invalid cell ID", async () => {
       await expect(
-        beads_link_thread.execute(
+        hive_link_thread.execute(
           { bead_id: "nonexistent-bead-xyz", thread_id: "thread-123" },
           mockContext,
         ),

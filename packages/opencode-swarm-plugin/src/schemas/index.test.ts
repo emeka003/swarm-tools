@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  BeadSchema,
-  BeadTypeSchema,
-  BeadCreateArgsSchema,
+  CellSchema,
+  CellTypeSchema,
+  CellCreateArgsSchema,
   EpicCreateArgsSchema,
   EvaluationSchema,
   TaskDecompositionSchema,
@@ -11,9 +11,9 @@ import {
   ValidationResultSchema,
 } from "./index";
 
-describe("BeadSchema", () => {
-  it("validates a complete bead", () => {
-    const bead = {
+describe("CellSchema", () => {
+  it("validates a complete cell", () => {
+    const cell = {
       id: "bd-abc123",
       title: "Fix the thing",
       type: "bug",
@@ -22,11 +22,11 @@ describe("BeadSchema", () => {
       created_at: "2025-01-01T00:00:00Z",
       updated_at: "2025-01-01T00:00:00Z",
     };
-    expect(() => BeadSchema.parse(bead)).not.toThrow();
+    expect(() => CellSchema.parse(cell)).not.toThrow();
   });
 
   it("rejects invalid priority", () => {
-    const bead = {
+    const cell = {
       id: "bd-abc123",
       title: "Fix the thing",
       type: "bug",
@@ -35,29 +35,29 @@ describe("BeadSchema", () => {
       created_at: "2025-01-01T00:00:00Z",
       updated_at: "2025-01-01T00:00:00Z",
     };
-    expect(() => BeadSchema.parse(bead)).toThrow();
+    expect(() => CellSchema.parse(cell)).toThrow();
   });
 
   it("accepts all valid types", () => {
     const types = ["bug", "feature", "task", "epic", "chore"];
     for (const type of types) {
-      expect(() => BeadTypeSchema.parse(type)).not.toThrow();
+      expect(() => CellTypeSchema.parse(type)).not.toThrow();
     }
   });
 });
 
-describe("BeadCreateArgsSchema", () => {
+describe("CellCreateArgsSchema", () => {
   it("validates minimal create args", () => {
-    const args = { title: "New bead" };
-    const result = BeadCreateArgsSchema.parse(args);
-    expect(result.title).toBe("New bead");
+    const args = { title: "New cell" };
+    const result = CellCreateArgsSchema.parse(args);
+    expect(result.title).toBe("New cell");
     expect(result.type).toBe("task"); // default
     expect(result.priority).toBe(2); // default
   });
 
   it("rejects empty title", () => {
     const args = { title: "" };
-    expect(() => BeadCreateArgsSchema.parse(args)).toThrow();
+    expect(() => CellCreateArgsSchema.parse(args)).toThrow();
   });
 });
 

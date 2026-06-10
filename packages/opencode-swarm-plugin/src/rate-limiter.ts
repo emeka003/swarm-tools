@@ -126,7 +126,8 @@ export interface EndpointLimits {
 
 /**
  * Default rate limits per endpoint
- * Can be overridden via OPENCODE_RATE_LIMIT_{ENDPOINT}_PER_MIN and _PER_HOUR
+ * Can be overridden via SWARM_RATE_LIMIT_{ENDPOINT}_PER_MIN and _PER_HOUR
+ * (falls back to OPENCODE_RATE_LIMIT_* for backward compatibility)
  */
 export const DEFAULT_LIMITS: Record<string, EndpointLimits> = {
   send: { perMinute: 20, perHour: 200 },
@@ -150,8 +151,10 @@ export function getLimitsForEndpoint(endpoint: string): EndpointLimits {
   const upperEndpoint = endpoint.toUpperCase();
 
   const perMinuteEnv =
+    process.env[`SWARM_RATE_LIMIT_${upperEndpoint}_PER_MIN`] ||
     process.env[`OPENCODE_RATE_LIMIT_${upperEndpoint}_PER_MIN`];
   const perHourEnv =
+    process.env[`SWARM_RATE_LIMIT_${upperEndpoint}_PER_HOUR`] ||
     process.env[`OPENCODE_RATE_LIMIT_${upperEndpoint}_PER_HOUR`];
 
   // Parse and validate env vars, fall back to defaults on NaN
@@ -658,9 +661,11 @@ export async function createRateLimiter(options?: {
 }): Promise<RateLimiter> {
   const {
     backend,
-    redisUrl = process.env.OPENCODE_RATE_LIMIT_REDIS_URL ||
+    redisUrl = process.env.SWARM_RATE_LIMIT_REDIS_URL ||
+      process.env.OPENCODE_RATE_LIMIT_REDIS_URL ||
       "redis://localhost:6379",
-    sqlitePath = process.env.OPENCODE_RATE_LIMIT_SQLITE_PATH ||
+    sqlitePath = process.env.SWARM_RATE_LIMIT_SQLITE_PATH ||
+      process.env.OPENCODE_RATE_LIMIT_SQLITE_PATH ||
       join(homedir(), ".config", "opencode", "rate-limits.db"),
   } = options || {};
 

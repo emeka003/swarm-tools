@@ -25,8 +25,8 @@ import { minimatch } from "minimatch";
 import {
   type AgentProgress,
   AgentProgressSchema,
-  type Bead,
-  BeadSchema,
+  type Cell,
+  CellSchema,
   type Evaluation,
   EvaluationSchema,
   type SpawnedAgent,
@@ -277,14 +277,13 @@ async function getSubtaskFilesOwned(
 }
 
 /**
- * Query beads for subtasks of an epic using HiveAdapter (not bd CLI)
+ * Query cells for subtasks of an epic using HiveAdapter (not bd CLI)
  */
-async function queryEpicSubtasks(projectKey: string, epicId: string): Promise<Bead[]> {
+async function queryEpicSubtasks(projectKey: string, epicId: string): Promise<Cell[]> {
   try {
     const adapter = await getHiveAdapter(projectKey);
     const cells = await adapter.queryCells(projectKey, { parent_id: epicId });
-    // Map Cell (from HiveAdapter) to Bead schema format
-    // Cell uses `type` and numeric timestamps, Bead uses `issue_type` and ISO strings
+    // Map Cell (from HiveAdapter) to Cell schema format
     return cells
       .filter(cell => cell.status !== "tombstone") // Exclude deleted cells
       .map(cell => ({
@@ -366,12 +365,6 @@ function formatProgressMessage(progress: AgentProgress): string {
 
   return lines.filter(Boolean).join("\n\n");
 }
-
-// ============================================================================
-// Verification Gate - Delegated to swarm-verify.ts
-// ============================================================================
-// Verification logic moved to swarm-verify.ts to keep coordinator lean.
-// Import runVerificationGate and types from there.
 
 /**
  * Classify failure based on error message heuristics

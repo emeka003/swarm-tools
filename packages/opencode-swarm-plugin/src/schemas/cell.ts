@@ -5,7 +5,6 @@
  * type safety and catch malformed responses early.
  *
  * Cells are work items in the Hive (honeycomb metaphor).
- * Backward compatibility: Bead* aliases provided for gradual migration.
  */
 import { z } from "zod";
 
@@ -213,53 +212,4 @@ export const EpicCreateResultSchema = z.object({
 });
 export type EpicCreateResult = z.infer<typeof EpicCreateResultSchema>;
 
-// ============================================================================
-// BACKWARD COMPATIBILITY ALIASES
-// These aliases maintain compatibility with existing code using Bead* names.
-// Gradually migrate to Cell* names in new code.
-// ============================================================================
 
-/** @deprecated Use CellStatusSchema instead */
-export const BeadStatusSchema = CellStatusSchema;
-/** @deprecated Use CellStatus instead */
-export type BeadStatus = CellStatus;
-
-/** @deprecated Use CellTypeSchema instead */
-export const BeadTypeSchema = CellTypeSchema;
-/** @deprecated Use CellType instead */
-export type BeadType = CellType;
-
-/** @deprecated Use CellDependencySchema instead */
-export const BeadDependencySchema = CellDependencySchema;
-/** @deprecated Use CellDependency instead */
-export type BeadDependency = CellDependency;
-
-/** @deprecated Use CellSchema instead */
-export const BeadSchema = CellSchema;
-/** @deprecated Use Cell instead */
-export type Bead = Cell;
-
-/** @deprecated Use CellCreateArgsSchema instead */
-export const BeadCreateArgsSchema = CellCreateArgsSchema;
-/** @deprecated Use CellCreateArgs instead */
-export type BeadCreateArgs = CellCreateArgs;
-
-/** @deprecated Use CellUpdateArgsSchema instead */
-export const BeadUpdateArgsSchema = CellUpdateArgsSchema;
-/** @deprecated Use CellUpdateArgs instead */
-export type BeadUpdateArgs = CellUpdateArgs;
-
-/** @deprecated Use CellCloseArgsSchema instead */
-export const BeadCloseArgsSchema = CellCloseArgsSchema;
-/** @deprecated Use CellCloseArgs instead */
-export type BeadCloseArgs = CellCloseArgs;
-
-/** @deprecated Use CellQueryArgsSchema instead */
-export const BeadQueryArgsSchema = CellQueryArgsSchema;
-/** @deprecated Use CellQueryArgs instead */
-export type BeadQueryArgs = CellQueryArgs;
-
-/** @deprecated Use CellTreeSchema instead */
-export const BeadTreeSchema = CellTreeSchema;
-/** @deprecated Use CellTree instead */
-export type BeadTree = CellTree;

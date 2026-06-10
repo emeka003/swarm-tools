@@ -244,12 +244,6 @@ export function getDefaultStorageConfig(): StorageConfig {
   };
 }
 
-/**
- * @deprecated Use getDefaultStorageConfig() instead. This static export
- * captures collections at module load time, breaking test isolation.
- */
-export const DEFAULT_STORAGE_CONFIG: StorageConfig = getDefaultStorageConfig();
-
 // ============================================================================
 // Unified Storage Interface
 // ============================================================================

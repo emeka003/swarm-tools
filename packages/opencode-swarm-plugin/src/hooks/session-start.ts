@@ -2,13 +2,14 @@ import { getHiveAdapter } from "../hive.js";
 
 /**
  * Debug logger factory
- * Checks DEBUG env var for namespace match at call time
+ * Checks SWARM_DEBUG/DEBUG env var for namespace match at call time
  */
 const debug = (namespace: string) => {
   return (message: string, data?: Record<string, unknown>) => {
     // Check env at call time, not creation time
+    const debugEnv = process.env.SWARM_DEBUG || process.env.DEBUG;
     const enabled =
-      process.env.DEBUG?.includes(namespace) || process.env.DEBUG?.includes("swarm:*");
+      debugEnv?.includes(namespace) || debugEnv?.includes("swarm:*");
     if (enabled) {
       console.log(`[${namespace}] ${message}`, data ? JSON.stringify(data) : "");
     }

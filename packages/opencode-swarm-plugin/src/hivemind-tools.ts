@@ -613,9 +613,5 @@ export {
 // Re-export createMemoryAdapter from memory module
 export { createMemoryAdapter } from "./memory";
 
-// Deprecated tool collection exports (aliases to hivemindTools)
-export const memoryTools = hivemindTools;
-export const cassTools = hivemindTools;
-
 // resetMemoryCache alias
 export const resetMemoryCache = resetHivemindCache;

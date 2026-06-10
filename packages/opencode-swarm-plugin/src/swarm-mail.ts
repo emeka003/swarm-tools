@@ -51,13 +51,6 @@ interface ToolContext {
   sessionID: string;
 }
 
-/**
- * Swarm Mail session state
- * @deprecated Use MailSessionState from streams/events.ts instead
- * This is kept for backward compatibility and re-exported as an alias
- */
-export type SwarmMailState = MailSessionState;
-
 /** Init tool arguments */
 interface InitArgs {
   project_path?: string;
@@ -153,12 +146,12 @@ function getSessionStatePath(sessionID: string): string {
   return join(SESSION_STATE_DIR, `${safeID}.json`);
 }
 
-function loadSessionState(sessionID: string): SwarmMailState | null {
+function loadSessionState(sessionID: string): MailSessionState | null {
   const path = getSessionStatePath(sessionID);
   try {
     if (existsSync(path)) {
       const data = readFileSync(path, "utf-8");
-      return JSON.parse(data) as SwarmMailState;
+      return JSON.parse(data) as MailSessionState;
     }
   } catch (error) {
     console.warn(`[swarm-mail] Could not load session state: ${error}`);
@@ -166,7 +159,7 @@ function loadSessionState(sessionID: string): SwarmMailState | null {
   return null;
 }
 
-function saveSessionState(sessionID: string, state: SwarmMailState): boolean {
+function saveSessionState(sessionID: string, state: MailSessionState): boolean {
   try {
     if (!existsSync(SESSION_STATE_DIR)) {
       mkdirSync(SESSION_STATE_DIR, { recursive: true });
@@ -197,7 +190,7 @@ function hasCoordinatorOverride(sessionID?: string): boolean {
 
 function formatCoordinatorOverrideError(params: {
   tool: "swarmmail_release_all" | "swarmmail_release_agent";
-  state: SwarmMailState;
+  state: MailSessionState;
   sessionID: string;
 }): string {
   return JSON.stringify(
@@ -271,7 +264,7 @@ export const swarmmail_init = tool({
       });
 
       // Save session state
-      const state: SwarmMailState = {
+      const state: MailSessionState = {
         projectKey: result.projectKey,
         agentName: result.agentName,
         reservations: [],

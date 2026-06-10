@@ -51,8 +51,8 @@ async function getQueue(queueName: string = "swarm"): Promise<SwarmQueue> {
 	cachedQueue = createSwarmQueue({
 		name: queueName,
 		connection: {
-			host: process.env.REDIS_HOST || "localhost",
-			port: parseInt(process.env.REDIS_PORT || "6379", 10),
+			host: process.env.SWARM_REDIS_HOST || process.env.REDIS_HOST || "localhost",
+			port: parseInt(process.env.SWARM_REDIS_PORT || process.env.REDIS_PORT || "6379", 10),
 		},
 		defaultJobOptions: {
 			attempts: 3,

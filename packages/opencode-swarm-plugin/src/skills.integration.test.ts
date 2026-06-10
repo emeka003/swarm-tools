@@ -1,34 +1,26 @@
-/**
+﻿/**
  * Skills Integration Tests
  *
  * Tests all skills_* tools with real filesystem operations.
  * These are happy-path integration tests verifying tools work end-to-end.
  *
  * Tools under test:
- * - skills_list
- * - skills_read
- * - skills_use
  * - skills_create
  * - skills_update
  * - skills_delete
  * - skills_init
  * - skills_add_script
- * - skills_execute
  */
 
 import { describe, expect, it, afterAll, beforeEach, vi } from "vitest";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  skills_list,
-  skills_read,
-  skills_use,
   skills_create,
   skills_update,
   skills_delete,
   skills_init,
   skills_add_script,
-  skills_execute,
   setSkillsProjectDirectory,
   invalidateSkillsCache,
 } from "./skills";
@@ -53,250 +45,6 @@ function setupTestDir() {
   setSkillsProjectDirectory(TEST_DIR);
   invalidateSkillsCache();
 }
-
-// =============================================================================
-// skills_list Tool
-// =============================================================================
-
-describe("skills_list tool", () => {
-  beforeEach(() => {
-    setupTestDir();
-  });
-
-  afterAll(() => {
-    cleanupTestDir();
-  });
-
-  it("should list empty skills directory", async () => {
-    const result = await skills_list.execute({});
-
-    // May find global skills, so just verify it doesn't error
-    expect(result).toBeDefined();
-    expect(typeof result).toBe("string");
-  });
-
-  it("should list discovered skills with metadata", async () => {
-    // Create a test skill first
-    await skills_create.execute({
-      name: "test-skill",
-      description: "Use when testing - this is a test skill",
-      body: "# Test Instructions\n\nDo the thing.",
-      tags: ["testing"],
-    });
-
-    invalidateSkillsCache();
-    const result = await skills_list.execute({});
-
-    // Should include our test skill (may include global skills too)
-    expect(result).toContain("test-skill");
-    expect(result).toContain("Use when testing");
-    expect(result).toContain("(testing)");
-  });
-
-  it("should filter skills by tag", async () => {
-    await skills_create.execute({
-      name: "skill-a",
-      description: "Use when A",
-      body: "A",
-      tags: ["frontend"],
-    });
-
-    await skills_create.execute({
-      name: "skill-b",
-      description: "Use when B",
-      body: "B",
-      tags: ["backend"],
-    });
-
-    invalidateSkillsCache();
-    const result = await skills_list.execute({ tag: "frontend" });
-
-    expect(result).toContain("skill-a");
-    expect(result).not.toContain("skill-b");
-  });
-
-  it("should show [has scripts] indicator", async () => {
-    await skills_create.execute({
-      name: "with-scripts",
-      description: "Use when scripting",
-      body: "Scripts",
-    });
-
-    await skills_add_script.execute({
-      skill: "with-scripts",
-      script_name: "helper.sh",
-      content: "#!/bin/bash\necho hi",
-    });
-
-    invalidateSkillsCache();
-    const result = await skills_list.execute({});
-
-    expect(result).toContain("with-scripts");
-    expect(result).toContain("[has scripts]");
-  });
-});
-
-// =============================================================================
-// skills_use Tool
-// =============================================================================
-
-describe("skills_use tool", () => {
-  beforeEach(() => {
-    setupTestDir();
-  });
-
-  afterAll(() => {
-    cleanupTestDir();
-  });
-
-  it("should activate a skill and return full content", async () => {
-    const body = "# Test Skill\n\nThese are the instructions.";
-    await skills_create.execute({
-      name: "test-skill",
-      description: "Use when testing",
-      body,
-    });
-
-    invalidateSkillsCache();
-    const result = await skills_use.execute({ name: "test-skill" });
-
-    expect(result).toContain("# Skill: test-skill");
-    expect(result).toContain(body);
-  });
-
-  it("should list available scripts when skill has them", async () => {
-    await skills_create.execute({
-      name: "scripted-skill",
-      description: "Use when scripting",
-      body: "Instructions",
-    });
-
-    await skills_add_script.execute({
-      skill: "scripted-skill",
-      script_name: "setup.sh",
-      content: "#!/bin/bash\necho setup",
-    });
-
-    invalidateSkillsCache();
-    const result = await skills_use.execute({ name: "scripted-skill" });
-
-    expect(result).toContain("Available Scripts");
-    expect(result).toContain("setup.sh");
-    expect(result).toContain("skills_execute");
-  });
-
-  it("should exclude scripts when include_scripts=false", async () => {
-    await skills_create.execute({
-      name: "scripted-skill",
-      description: "Use when scripting",
-      body: "Instructions",
-    });
-
-    await skills_add_script.execute({
-      skill: "scripted-skill",
-      script_name: "setup.sh",
-      content: "#!/bin/bash\necho setup",
-    });
-
-    invalidateSkillsCache();
-    const result = await skills_use.execute({
-      name: "scripted-skill",
-      include_scripts: false,
-    });
-
-    expect(result).not.toContain("Available Scripts");
-    expect(result).not.toContain("setup.sh");
-  });
-
-  it("should return error for non-existent skill", async () => {
-    const result = await skills_use.execute({ name: "non-existent" });
-
-    expect(result).toContain("not found");
-    expect(result).toContain("Available skills:");
-  });
-});
-
-// =============================================================================
-// skills_read Tool
-// =============================================================================
-
-describe("skills_read tool", () => {
-  beforeEach(() => {
-    setupTestDir();
-  });
-
-  afterAll(() => {
-    cleanupTestDir();
-  });
-
-  it("should read a resource file from skill directory", async () => {
-    await skills_create.execute({
-      name: "documented-skill",
-      description: "Use when documenting",
-      body: "Instructions",
-    });
-
-    // Manually create a reference file
-    const skillDir = join(SKILLS_DIR, "documented-skill");
-    const exampleContent = "# Examples\n\nExample content here.";
-    writeFileSync(join(skillDir, "examples.md"), exampleContent);
-
-    const result = await skills_read.execute({
-      skill: "documented-skill",
-      file: "examples.md",
-    });
-
-    expect(result).toBe(exampleContent);
-  });
-
-  it("should prevent path traversal attacks", async () => {
-    await skills_create.execute({
-      name: "secure-skill",
-      description: "Use when securing",
-      body: "Secure",
-    });
-
-    const maliciousPaths = [
-      "../../../etc/passwd",
-      "../../..",
-      "/etc/passwd",
-      "..\\..\\windows\\system32",
-    ];
-
-    for (const path of maliciousPaths) {
-      const result = await skills_read.execute({
-        skill: "secure-skill",
-        file: path,
-      });
-
-      expect(result).toContain("Invalid file path");
-    }
-  });
-
-  it("should return error for non-existent skill", async () => {
-    const result = await skills_read.execute({
-      skill: "non-existent",
-      file: "anything.md",
-    });
-
-    expect(result).toContain("not found");
-  });
-
-  it("should return error for non-existent file", async () => {
-    await skills_create.execute({
-      name: "empty-skill",
-      description: "Use when empty",
-      body: "Empty",
-    });
-
-    const result = await skills_read.execute({
-      skill: "empty-skill",
-      file: "non-existent.md",
-    });
-
-    expect(result).toContain("Failed to read");
-  });
-});
 
 // =============================================================================
 // skills_create Tool
@@ -396,9 +144,9 @@ describe("skills_create tool", () => {
       body: "Cache",
     });
 
-    // Should be immediately discoverable without manual cache clear
-    const skill = await skills_list.execute({});
-    expect(skill).toContain("cache-test");
+    // Verify the file was created
+    const skillPath = join(SKILLS_DIR, "cache-test", "SKILL.md");
+    expect(existsSync(skillPath)).toBe(true);
   });
 });
 
@@ -645,9 +393,9 @@ describe("skills_delete tool", () => {
       confirm: true,
     });
 
-    // Should be immediately gone from list
-    const result = await skills_list.execute({});
-    expect(result).not.toContain("cache-delete-test");
+    // Verify the directory was removed
+    const skillDir = join(SKILLS_DIR, "cache-delete-test");
+    expect(existsSync(skillDir)).toBe(false);
   });
 });
 
@@ -882,312 +630,8 @@ describe("skills_add_script tool", () => {
       content: "echo test",
     });
 
-    // Should immediately show [has scripts]
-    const result = await skills_list.execute({});
-    expect(result).toContain("cache-script-test");
-    expect(result).toContain("[has scripts]");
-  });
-});
-
-// =============================================================================
-// skills_execute Tool
-// =============================================================================
-
-describe("skills_execute tool", () => {
-  beforeEach(() => {
-    setupTestDir();
-  });
-
-  afterAll(() => {
-    cleanupTestDir();
-  });
-
-  it("should execute a script successfully", async () => {
-    await skills_create.execute({
-      name: "exec-test",
-      description: "Use when executing",
-      body: "Body",
-    });
-
-    await skills_add_script.execute({
-      skill: "exec-test",
-      script_name: "echo.sh",
-      content: '#!/bin/bash\necho "Hello from script"',
-    });
-
-    // Manually ensure executable (writeFileSync mode doesn't always work)
-    const scriptPath = join(SKILLS_DIR, "exec-test", "scripts", "echo.sh");
-    chmodSync(scriptPath, 0o755);
-
-    const result = await skills_execute.execute({
-      skill: "exec-test",
-      script: "echo.sh",
-    });
-
-    expect(result).toContain("Hello from script");
-  });
-
-  it("should pass project directory as first argument", async () => {
-    await skills_create.execute({
-      name: "args-test",
-      description: "Use when args",
-      body: "Body",
-    });
-
-    await skills_add_script.execute({
-      skill: "args-test",
-      script_name: "check-args.sh",
-      content: '#!/bin/bash\necho "Project dir: $1"',
-    });
-
-    const scriptPath = join(SKILLS_DIR, "args-test", "scripts", "check-args.sh");
-    chmodSync(scriptPath, 0o755);
-
-    const result = await skills_execute.execute({
-      skill: "args-test",
-      script: "check-args.sh",
-    });
-
-    expect(result).toContain("Project dir:");
-    expect(result).toContain(TEST_DIR);
-  });
-
-  it("should pass additional arguments to script", async () => {
-    await skills_create.execute({
-      name: "multi-args-test",
-      description: "Use when multi args",
-      body: "Body",
-    });
-
-    await skills_add_script.execute({
-      skill: "multi-args-test",
-      script_name: "args.sh",
-      content: '#!/bin/bash\necho "Args: $1 $2 $3"',
-    });
-
-    const scriptPath = join(SKILLS_DIR, "multi-args-test", "scripts", "args.sh");
-    chmodSync(scriptPath, 0o755);
-
-    const result = await skills_execute.execute({
-      skill: "multi-args-test",
-      script: "args.sh",
-      args: ["arg1", "arg2"],
-    });
-
-    expect(result).toContain("Args:");
-    expect(result).toContain("arg1");
-    expect(result).toContain("arg2");
-  });
-
-  it("should return error for non-existent skill", async () => {
-    const result = await skills_execute.execute({
-      skill: "non-existent",
-      script: "test.sh",
-    });
-
-    expect(result).toContain("not found");
-  });
-
-  it("should return error for non-existent script", async () => {
-    await skills_create.execute({
-      name: "no-script",
-      description: "Use when no script",
-      body: "Body",
-    });
-
-    const result = await skills_execute.execute({
-      skill: "no-script",
-      script: "missing.sh",
-    });
-
-    expect(result).toContain("not found");
-    expect(result).toContain("Available:");
-  });
-
-  it("should return non-zero exit code output", async () => {
-    await skills_create.execute({
-      name: "fail-test",
-      description: "Use when failing",
-      body: "Body",
-    });
-
-    await skills_add_script.execute({
-      skill: "fail-test",
-      script_name: "fail.sh",
-      content: '#!/bin/bash\necho "Failed"\nexit 1',
-    });
-
-    const scriptPath = join(SKILLS_DIR, "fail-test", "scripts", "fail.sh");
-    chmodSync(scriptPath, 0o755);
-
-    const result = await skills_execute.execute({
-      skill: "fail-test",
-      script: "fail.sh",
-    });
-
-    expect(result).toContain("exited with code 1");
-    expect(result).toContain("Failed");
-  });
-
-  it("should timeout long-running scripts", async () => {
-    await skills_create.execute({
-      name: "timeout-test",
-      description: "Use when timing out",
-      body: "Body",
-    });
-
-    await skills_add_script.execute({
-      skill: "timeout-test",
-      script_name: "slow.sh",
-      content: '#!/bin/bash\nsleep 10', // 10s (longer than 2s timeout)
-    });
-
-    const scriptPath = join(SKILLS_DIR, "timeout-test", "scripts", "slow.sh");
-    chmodSync(scriptPath, 0o755);
-
-    const result = await skills_execute.execute({
-      skill: "timeout-test",
-      script: "slow.sh",
-      timeout_ms: 2000,
-    });
-
-    expect(result).toContain("timed out");
-    expect(result).toContain("2 seconds");
-  }, 5000); // Allow 5s for test itself
-});
-
-// =============================================================================
-// Deprecation Warnings Tests
-// =============================================================================
-
-describe("deprecation warnings", () => {
-  beforeEach(() => {
-    setupTestDir();
-  });
-
-  afterAll(() => {
-    cleanupTestDir();
-  });
-
-  it("skills_list emits deprecation warning", async () => {
-    const warnSpy = vi.spyOn(console, "warn");
-    
-    await skills_list.execute({});
-    
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[DEPRECATED] skills_list")
-    );
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("OpenCode now provides native skills support")
-    );
-    warnSpy.mockRestore();
-  });
-
-  it("skills_use emits deprecation warning", async () => {
-    await skills_create.execute({
-      name: "test-skill",
-      description: "Use when testing",
-      body: "Instructions",
-    });
-
-    invalidateSkillsCache();
-    
-    const warnSpy = vi.spyOn(console, "warn");
-    
-    await skills_use.execute({ name: "test-skill" });
-    
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[DEPRECATED] skills_use")
-    );
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("OpenCode now provides native skills support")
-    );
-    warnSpy.mockRestore();
-  });
-
-  it("skills_read emits deprecation warning", async () => {
-    await skills_create.execute({
-      name: "test-skill",
-      description: "Use when testing",
-      body: "Instructions",
-    });
-
-    const skillDir = join(SKILLS_DIR, "test-skill");
-    writeFileSync(join(skillDir, "example.md"), "# Example");
-
-    invalidateSkillsCache();
-    
-    const warnSpy = vi.spyOn(console, "warn");
-    
-    await skills_read.execute({
-      skill: "test-skill",
-      file: "example.md",
-    });
-    
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[DEPRECATED] skills_read")
-    );
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("OpenCode now provides native skills support")
-    );
-    warnSpy.mockRestore();
-  });
-
-  it("skills_execute emits deprecation warning", async () => {
-    await skills_create.execute({
-      name: "test-skill",
-      description: "Use when testing",
-      body: "Instructions",
-    });
-
-    await skills_add_script.execute({
-      skill: "test-skill",
-      script_name: "test.sh",
-      content: '#!/bin/bash\necho "test"',
-    });
-
-    const scriptPath = join(SKILLS_DIR, "test-skill", "scripts", "test.sh");
-    chmodSync(scriptPath, 0o755);
-
-    invalidateSkillsCache();
-    
-    const warnSpy = vi.spyOn(console, "warn");
-    
-    await skills_execute.execute({
-      skill: "test-skill",
-      script: "test.sh",
-    });
-    
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[DEPRECATED] skills_execute")
-    );
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("OpenCode now provides native skills support")
-    );
-    warnSpy.mockRestore();
-  });
-
-  it("deprecated tools still function correctly (soft deprecation)", async () => {
-    // Create a skill
-    await skills_create.execute({
-      name: "functional-test",
-      description: "Use when testing functionality",
-      body: "# Test\n\nStill works!",
-    });
-
-    invalidateSkillsCache();
-
-    // Suppress console.warn for this test
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    // skills_list should still list skills
-    const listResult = await skills_list.execute({});
-    expect(listResult).toContain("functional-test");
-
-    // skills_use should still return content
-    const useResult = await skills_use.execute({ name: "functional-test" });
-    expect(useResult).toContain("Still works!");
-
-    warnSpy.mockRestore();
+    // Verify script exists
+    const scriptPath = join(SKILLS_DIR, "cache-script-test", "scripts", "test.sh");
+    expect(existsSync(scriptPath)).toBe(true);
   });
 });

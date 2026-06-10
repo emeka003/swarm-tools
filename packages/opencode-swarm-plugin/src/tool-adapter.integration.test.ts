@@ -71,7 +71,7 @@ import {
 
 import { setCoordinatorContext, clearCoordinatorContext } from "./planning-guardrails";
 
-import type { Bead, EpicCreateResult } from "./schemas";
+import type { Cell, EpicCreateResult } from "./schemas";
 
 // ============================================================================
 // Test Configuration
@@ -630,7 +630,7 @@ describe("hive tools adapter wiring", () => {
     setHiveWorkingDirectory(TEST_DB_PATH);
 
     try {
-      const result = await executeTool<Bead>(
+      const result = await executeTool<Cell>(
         hive_create,
         { title: "Test cell minimal" },
         ctx,
@@ -670,7 +670,7 @@ describe("hive tools adapter wiring", () => {
 
     try {
       // Create a test cell
-      const created = await executeTool<Bead>(
+      const created = await executeTool<Cell>(
         hive_create,
         { title: "Query test cell", type: "task" },
         ctx,
@@ -678,7 +678,7 @@ describe("hive tools adapter wiring", () => {
       createdCellIds.push(created.id);
 
       // Query cells (this calls store functions)
-      const result = await executeTool<Bead[]>(
+      const result = await executeTool<Cell[]>(
         hive_query,
         { status: "open" },
         ctx,
@@ -710,7 +710,7 @@ describe("hive tools adapter wiring", () => {
 
     try {
       // Create a test cell
-      const created = await executeTool<Bead>(
+      const created = await executeTool<Cell>(
         hive_create,
         { title: "Update test cell", description: "Original description" },
         ctx,
@@ -718,7 +718,7 @@ describe("hive tools adapter wiring", () => {
       createdCellIds.push(created.id);
 
       // Update cell (this calls store functions)
-      const result = await executeTool<Bead>(
+      const result = await executeTool<Cell>(
         hive_update,
         { id: created.id, description: "Updated description" },
         ctx,
@@ -749,7 +749,7 @@ describe("hive tools adapter wiring", () => {
 
     try {
       // Create a test cell
-      const created = await executeTool<Bead>(
+      const created = await executeTool<Cell>(
         hive_create,
         { title: "Close test cell" },
         ctx,
@@ -788,7 +788,7 @@ describe("hive tools adapter wiring", () => {
 
     try {
       // Create a test cell
-      const created = await executeTool<Bead>(
+      const created = await executeTool<Cell>(
         hive_create,
         { title: "Start test cell" },
         ctx,
@@ -830,7 +830,7 @@ describe("hive tools adapter wiring", () => {
 
     try {
       // Create a high priority cell
-      const created = await executeTool<Bead>(
+      const created = await executeTool<Cell>(
         hive_create,
         { title: "Ready test cell", priority: 0 },
         ctx,
@@ -842,7 +842,7 @@ describe("hive tools adapter wiring", () => {
 
       // Should succeed (either returns a cell or "No ready beads")
       if (result !== "No ready beads") {
-        const cell = JSON.parse(result) as Bead;
+        const cell = JSON.parse(result) as Cell;
         expect(cell.id).toBeDefined();
         expect(cell.status).not.toBe("closed");
         expect(cell.status).not.toBe("blocked");
@@ -926,7 +926,7 @@ describe("swarm tools adapter wiring", () => {
 
     try {
       // Create a test cell first
-      const created = await executeTool<Bead>(
+      const created = await executeTool<Cell>(
         hive_create,
         { title: "Progress test cell" },
         ctx,
@@ -1247,7 +1247,7 @@ describe("smoke test - all tools in sequence", () => {
       expect(init.agent_name).toBe("SmokeTestAgent");
 
       // 2. Create a cell
-      const cell = await executeTool<Bead>(
+      const cell = await executeTool<Cell>(
         hive_create,
         { title: "Smoke test workflow cell", description: "Full integration test" },
         ctx,

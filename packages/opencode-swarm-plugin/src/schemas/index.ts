@@ -4,14 +4,12 @@
  * This module re-exports all schema definitions used throughout the plugin.
  * Schemas are organized by domain:
  *
- * ## Cell Schemas (Issue Tracking) - PRIMARY
- * - `CellSchema` - Core cell/issue definition (formerly BeadSchema)
+ * ## Cell Schemas (Issue Tracking)
+ * - `CellSchema` - Core cell/issue definition
  * - `CellStatusSchema` - Status enum (open, in_progress, blocked, closed)
  * - `CellTypeSchema` - Type enum (bug, feature, task, epic, chore)
  * - `SubtaskSpecSchema` - Subtask specification for epic creation
- * - `CellTreeSchema` - Epic + subtasks structure (formerly CellTreeSchema)
- *
- * **Backward compatibility:** All Bead* names are exported as deprecated aliases.
+ * - `CellTreeSchema` - Epic + subtasks structure
  *
  * ## Task Schemas (Swarm Decomposition)
  * - `TaskDecompositionSchema` - Full task breakdown
@@ -61,28 +59,6 @@ export {
   type CellTree,
   type EpicCreateArgs,
   type EpicCreateResult,
-} from "./cell";
-
-// Bead schemas (backward compatibility aliases)
-export {
-  BeadStatusSchema,
-  BeadTypeSchema,
-  BeadDependencySchema,
-  BeadSchema,
-  BeadCreateArgsSchema,
-  BeadUpdateArgsSchema,
-  BeadCloseArgsSchema,
-  BeadQueryArgsSchema,
-  BeadTreeSchema,
-  type BeadStatus,
-  type BeadType,
-  type BeadDependency,
-  type Bead,
-  type BeadCreateArgs,
-  type BeadUpdateArgs,
-  type BeadCloseArgs,
-  type BeadQueryArgs,
-  type BeadTree,
 } from "./cell";
 
 // Evaluation schemas
@@ -235,52 +211,4 @@ export {
   type CellAssignedEvent,
   type CellWorkStartedEvent,
   type CellCompactedEvent,
-} from "./cell-events";
-
-// Bead event schemas (DEPRECATED - backward compatibility)
-export {
-  BaseBeadEventSchema,
-  BeadCreatedEventSchema,
-  BeadUpdatedEventSchema,
-  BeadStatusChangedEventSchema,
-  BeadClosedEventSchema,
-  BeadReopenedEventSchema,
-  BeadDeletedEventSchema,
-  BeadDependencyAddedEventSchema,
-  BeadDependencyRemovedEventSchema,
-  BeadLabelAddedEventSchema,
-  BeadLabelRemovedEventSchema,
-  BeadCommentAddedEventSchema,
-  BeadCommentUpdatedEventSchema,
-  BeadCommentDeletedEventSchema,
-  BeadEpicChildAddedEventSchema,
-  BeadEpicChildRemovedEventSchema,
-  BeadEpicClosureEligibleEventSchema,
-  BeadAssignedEventSchema,
-  BeadWorkStartedEventSchema,
-  BeadCompactedEventSchema,
-  BeadEventSchema,
-  createBeadEvent,
-  isBeadEventType,
-  getBeadIdFromEvent,
-  type BeadEvent,
-  type BeadCreatedEvent,
-  type BeadUpdatedEvent,
-  type BeadStatusChangedEvent,
-  type BeadClosedEvent,
-  type BeadReopenedEvent,
-  type BeadDeletedEvent,
-  type BeadDependencyAddedEvent,
-  type BeadDependencyRemovedEvent,
-  type BeadLabelAddedEvent,
-  type BeadLabelRemovedEvent,
-  type BeadCommentAddedEvent,
-  type BeadCommentUpdatedEvent,
-  type BeadCommentDeletedEvent,
-  type BeadEpicChildAddedEvent,
-  type BeadEpicChildRemovedEvent,
-  type BeadEpicClosureEligibleEvent,
-  type BeadAssignedEvent,
-  type BeadWorkStartedEvent,
-  type BeadCompactedEvent,
 } from "./cell-events";

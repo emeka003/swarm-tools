@@ -24,9 +24,7 @@ import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 
 import {
   hiveTools,
-  beadsTools,
   setHiveWorkingDirectory,
-  setBeadsWorkingDirectory,
 } from "./hive";
 import {
   agentMailTools,
@@ -37,7 +35,6 @@ import {
 import {
   swarmMailTools,
   setSwarmMailProjectDirectory,
-  type SwarmMailState,
 } from "./swarm-mail";
 import { structuredTools } from "./structured";
 import { swarmTools } from "./swarm";
@@ -52,7 +49,6 @@ import { researchTools } from "./swarm-research";
 import { queueTools } from "./queue-tools";
 // NOTE: evalTools removed from main bundle - evalite is a devDependency
 // Use `bunx evalite run` directly for running evals
-// import { evalTools } from "./eval-runner";
 import { contributorTools } from "./contributor-tools";
 import {
   guardrailOutput,
@@ -564,12 +560,8 @@ export * from "./schemas";
  *
  * Includes:
  * - hiveTools - All hive tool definitions (primary)
- * - beadsTools - Legacy aliases for backward compatibility (deprecated)
  * - Individual tool exports (hive_create, hive_query, etc.)
- * - Legacy aliases (hive_create, hive_query, etc.)
- * - HiveError, HiveValidationError (and BeadError, BeadValidationError aliases)
- *
- * DEPRECATED: Use hive_* tools instead of beads_* tools
+ * - HiveError, HiveValidationError
  */
 export * from "./hive";
 
@@ -621,7 +613,6 @@ export {
   setSwarmMailProjectDirectory,
   getSwarmMailProjectDirectory,
   clearSessionState,
-  type SwarmMailState,
 } from "./swarm-mail";
 
 /**
@@ -690,7 +681,7 @@ export {
  * Each tool has an `execute` function that takes (args, ctx) and returns a string.
  *
  * Note: hiveTools includes both hive_* and beads_* (legacy aliases)
- * Note: hivemindTools includes both hivemind_* and deprecated semantic-memory_* + cass_* aliases
+ * Note: hivemindTools includes both hivemind_* and deprecated semantic-memory_* aliases
  */
 export const allTools = {
   ...hiveTools,
@@ -722,7 +713,6 @@ export type CLIToolName = keyof typeof allTools;
  * - getStorage, setStorage, resetStorage - Global instance management
  * - InMemoryStorage, SemanticMemoryStorage - Storage implementations
  * - isSemanticMemoryAvailable - Availability check
- * - DEFAULT_STORAGE_CONFIG - Default configuration
  *
  * Types:
  * - LearningStorage - Unified storage interface
@@ -737,7 +727,6 @@ export {
   InMemoryStorage,
   SemanticMemoryStorage,
   isSemanticMemoryAvailable,
-  DEFAULT_STORAGE_CONFIG,
   type LearningStorage,
   type StorageConfig,
   type StorageBackend,
@@ -1262,4 +1251,3 @@ export {
  * - cass_viewed - When a session is viewed
  * - cass_indexed - When the index is built/rebuilt
  */
-export { cassTools } from "./cass-tools";

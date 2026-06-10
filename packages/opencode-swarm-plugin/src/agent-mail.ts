@@ -74,10 +74,10 @@ export function getAgentMailProjectDirectory(): string {
 
 // Retry configuration
 const RETRY_CONFIG = {
-  maxRetries: parseInt(process.env.OPENCODE_AGENT_MAIL_MAX_RETRIES || "3"),
-  baseDelayMs: parseInt(process.env.OPENCODE_AGENT_MAIL_BASE_DELAY_MS || "100"),
-  maxDelayMs: parseInt(process.env.OPENCODE_AGENT_MAIL_MAX_DELAY_MS || "5000"),
-  timeoutMs: parseInt(process.env.OPENCODE_AGENT_MAIL_TIMEOUT_MS || "10000"),
+  maxRetries: parseInt(process.env.SWARM_AGENT_MAIL_MAX_RETRIES || process.env.OPENCODE_AGENT_MAIL_MAX_RETRIES || "3"),
+  baseDelayMs: parseInt(process.env.SWARM_AGENT_MAIL_BASE_DELAY_MS || process.env.OPENCODE_AGENT_MAIL_BASE_DELAY_MS || "100"),
+  maxDelayMs: parseInt(process.env.SWARM_AGENT_MAIL_MAX_DELAY_MS || process.env.OPENCODE_AGENT_MAIL_MAX_DELAY_MS || "5000"),
+  timeoutMs: parseInt(process.env.SWARM_AGENT_MAIL_TIMEOUT_MS || process.env.OPENCODE_AGENT_MAIL_TIMEOUT_MS || "10000"),
   jitterPercent: 20,
 };
 
@@ -88,7 +88,7 @@ const RECOVERY_CONFIG = {
   /** Cooldown between restart attempts (ms) - 10 seconds */
   restartCooldownMs: 10000,
   /** Whether auto-restart is enabled */
-  enabled: process.env.OPENCODE_AGENT_MAIL_AUTO_RESTART !== "false",
+  enabled: (process.env.SWARM_AGENT_MAIL_AUTO_RESTART ?? process.env.OPENCODE_AGENT_MAIL_AUTO_RESTART) !== "false",
 };
 
 // ============================================================================
@@ -417,7 +417,7 @@ async function isServerFunctional(): Promise<boolean> {
 async function restartServer(): Promise<boolean> {
   if (!RECOVERY_CONFIG.enabled) {
     console.warn(
-      "[agent-mail] Auto-restart disabled via OPENCODE_AGENT_MAIL_AUTO_RESTART=false",
+      "[agent-mail] Auto-restart disabled via SWARM_AGENT_MAIL_AUTO_RESTART=false",
     );
     return false;
   }
@@ -656,7 +656,7 @@ let rateLimiter: RateLimiter | null = null;
 
 /** Whether rate limiting is enabled (can be disabled via env var) */
 const RATE_LIMITING_ENABLED =
-  process.env.OPENCODE_RATE_LIMIT_DISABLED !== "true";
+  (process.env.SWARM_RATE_LIMIT_DISABLED ?? process.env.OPENCODE_RATE_LIMIT_DISABLED) !== "true";
 
 /**
  * Check rate limit for an endpoint and throw if exceeded

@@ -78,20 +78,20 @@ export function enrichError(
 }
 
 /**
- * debugLog - Conditional logging based on DEBUG env var
+ * debugLog - Conditional logging based on SWARM_DEBUG/DEBUG env var
  * 
  * Patterns:
- * - DEBUG=swarm:* (all)
- * - DEBUG=swarm:coordinator
- * - DEBUG=swarm:worker
- * - DEBUG=swarm:mail
+ * - SWARM_DEBUG=swarm:* (all)
+ * - SWARM_DEBUG=swarm:coordinator
+ * - SWARM_DEBUG=swarm:worker
+ * - SWARM_DEBUG=swarm:mail
  */
 export function debugLog(
 	namespace: string,
 	message: string,
 	data?: unknown,
 ): void {
-	const debug = process.env.DEBUG;
+	const debug = process.env.SWARM_DEBUG || process.env.DEBUG;
 	if (!debug) return;
 
 	// Parse DEBUG patterns (comma-separated)

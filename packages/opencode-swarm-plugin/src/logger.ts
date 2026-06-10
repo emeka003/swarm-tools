@@ -49,7 +49,7 @@ export function getLogger(logDir: string = DEFAULT_LOG_DIR): Logger {
   }
 
   const baseConfig = {
-    level: process.env.LOG_LEVEL || "info",
+    level: process.env.SWARM_LOG_LEVEL || process.env.LOG_LEVEL || "info",
     timestamp: pino.stdTimeFunctions.isoTime,
   };
 
@@ -87,7 +87,7 @@ export function createChildLogger(
   }
 
   const baseConfig = {
-    level: process.env.LOG_LEVEL || "info",
+    level: process.env.SWARM_LOG_LEVEL || process.env.LOG_LEVEL || "info",
     timestamp: pino.stdTimeFunctions.isoTime,
   };
 
