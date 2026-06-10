@@ -17,7 +17,7 @@
  */
 
 import { checkSwarmHealth } from "swarm-mail";
-import { getToolTimeoutMs } from "./utils/timeouts";
+import { getToolTimeoutMs } from "./utils/timeouts.js";
 
 /** Default timeout for URL reachability checks in milliseconds */
 const DEFAULT_URL_TIMEOUT_MS = 2000;

@@ -27,6 +27,14 @@ describe("isCoordinator", () => {
   test("returns false for unknown context", () => {
     expect(isCoordinator("unknown" as any)).toBe(false);
   });
+
+  test("returns false for undefined context", () => {
+    expect(isCoordinator(undefined as any)).toBe(false);
+  });
+
+  test("returns false for null context", () => {
+    expect(isCoordinator(null as any)).toBe(false);
+  });
 });
 
 describe("checkCoordinatorGuard", () => {

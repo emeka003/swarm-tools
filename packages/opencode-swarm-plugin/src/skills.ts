@@ -38,7 +38,7 @@ import {
 import { fileURLToPath } from "url";
 import matter from "gray-matter";
 import { getSwarmMailLibSQL, createEvent } from "swarm-mail";
-import { getToolTimeoutMs } from "./utils/timeouts";
+import { getToolTimeoutMs } from "./utils/timeouts.js";
 
 // =============================================================================
 // Types

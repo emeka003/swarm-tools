@@ -36,7 +36,7 @@ import type { PatternMaturity, MaturityFeedback } from "./pattern-maturity";
 import { InMemoryFeedbackStorage } from "./learning";
 import { InMemoryPatternStorage } from "./anti-patterns";
 import { InMemoryMaturityStorage } from "./pattern-maturity";
-import { getToolTimeoutMs, ToolTimeoutError } from "./utils/timeouts";
+import { getToolTimeoutMs, ToolTimeoutError } from "./utils/timeouts.js";
 
 // ============================================================================
 // Command Resolution
