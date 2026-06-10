@@ -553,10 +553,37 @@ export const swarm_init = tool({
       );
     }
 
+    // Start session for handoff protocol
+    let sessionInfo: { session_id?: string; previous_handoff_notes?: string } = {};
+    if (args.project_path) {
+      try {
+        const { hive_session_start } = await import("./hive.js");
+        const sessionResult = await hive_session_start.execute(
+          { active_cell_id: undefined },
+          {} as any,
+        );
+        const parsed = JSON.parse(sessionResult as string);
+        sessionInfo = {
+          session_id: parsed.session_id,
+          previous_handoff_notes: parsed.previous_handoff_notes,
+        };
+      } catch (error) {
+        // Non-fatal - session handoff is optional
+        console.warn(
+          "[swarm_init] Failed to start session:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+
     return JSON.stringify(
       {
         ready: true,
         isolation: isolationInfo,
+        session: sessionInfo.session_id ? {
+          session_id: sessionInfo.session_id,
+          previous_handoff_notes: sessionInfo.previous_handoff_notes,
+        } : undefined,
         tool_availability: Object.fromEntries(
           Array.from(availability.entries()).map(([k, v]) => [
             k,
@@ -1837,6 +1864,51 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
         console.warn("[swarm_complete] Failed to capture subtask_success:", error);
       }
 
+      // End session with handoff notes for next session
+      try {
+        const { hive_session_end } = await import("./hive.js");
+        
+        // Query remaining subtasks for handoff notes
+        const remainingSubtasks = await queryEpicSubtasks(args.project_key, epicId);
+        const openSubtasks = remainingSubtasks.filter((s) => s.status === "open");
+        const inProgressSubtasks = remainingSubtasks.filter((s) => s.status === "in_progress");
+        const blockedSubtasks = remainingSubtasks.filter((s) => s.status === "blocked");
+        const completedSubtasks = remainingSubtasks.filter((s) => s.status === "closed");
+        
+        const handoffParts: string[] = [];
+        handoffParts.push(`Completed: ${args.bead_id} (${args.summary})`);
+        handoffParts.push(`Progress: ${completedSubtasks.length}/${remainingSubtasks.length} subtasks complete`);
+        
+        if (openSubtasks.length > 0) {
+          handoffParts.push(`Open: ${openSubtasks.map((s) => `${s.id} - ${s.title}`).join(", ")}`);
+        }
+        if (inProgressSubtasks.length > 0) {
+          handoffParts.push(`In Progress: ${inProgressSubtasks.map((s) => `${s.id} - ${s.title}`).join(", ")}`);
+        }
+        if (blockedSubtasks.length > 0) {
+          handoffParts.push(`Blocked: ${blockedSubtasks.map((s) => `${s.id} - ${s.title}`).join(", ")}`);
+        }
+        
+        if (openSubtasks.length > 0) {
+          handoffParts.push(`Next: Spawn workers for open subtasks`);
+        } else if (blockedSubtasks.length > 0) {
+          handoffParts.push(`Next: Investigate blocked subtasks`);
+        } else {
+          handoffParts.push(`Next: All subtasks complete - sync and close epic`);
+        }
+        
+        await hive_session_end.execute(
+          { handoff_notes: handoffParts.join("\n") },
+          {} as any,
+        );
+      } catch (error) {
+        // Non-fatal - session handoff is optional
+        console.warn(
+          "[swarm_complete] Failed to end session:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+
       return JSON.stringify(response, null, 2);
     } catch (error) {
       // CRITICAL: Notify coordinator of failure via swarm mail
@@ -1943,6 +2015,29 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
       } catch (captureError) {
         // Non-fatal - don't block error return if capture fails
         console.warn("[swarm_complete] Failed to capture subtask_failed:", captureError);
+      }
+
+      // End session with failure handoff notes
+      try {
+        const { hive_session_end } = await import("./hive.js");
+        const handoffNotes = [
+          `FAILED: ${args.bead_id} - ${failedStep}`,
+          `Error: ${errorMessage.slice(0, 200)}`,
+          `Summary: ${args.summary}`,
+          `Files touched: ${args.files_touched?.join(", ") || "none"}`,
+          `Next: Investigate failure in ${failedStep} and retry`,
+        ].join("\n");
+        
+        await hive_session_end.execute(
+          { handoff_notes: handoffNotes },
+          {} as any,
+        );
+      } catch (sessionError) {
+        // Non-fatal - session handoff is optional
+        console.warn(
+          "[swarm_complete] Failed to end session on error:",
+          sessionError instanceof Error ? sessionError.message : String(sessionError),
+        );
       }
 
       // Return structured error instead of throwing

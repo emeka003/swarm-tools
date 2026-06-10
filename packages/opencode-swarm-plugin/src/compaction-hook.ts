@@ -29,7 +29,7 @@
  * ```
  */
 
-import { checkSwarmHealth } from "swarm-mail";
+import { checkSwarmHealth, getSwarmMailLibSQL } from "swarm-mail";
 import {
   CompactionPhase,
   createMetricsCollector,
@@ -240,6 +240,18 @@ When compaction occurs, extract and preserve this structure:
 
 **Ready to Spawn:**
 - CELL_ID: TITLE (files: FILES)
+
+**Recent Messages:**
+- FROM: SUBJECT (TIMESTAMP)
+
+**Active Reservations:**
+- AGENT: FILES (since TIMESTAMP)
+
+**Active Worktrees:**
+- TASK_ID: PATH (branch: BRANCH)
+
+**Recent Reviews:**
+- BEAD_ID: STATUS (attempt N, TIMESTAMP)
 \`\`\`
 
 ### What to Extract:
@@ -248,6 +260,7 @@ When compaction occurs, extract and preserve this structure:
 3. **What's Blocked** - Blockers and what's needed to unblock
 4. **What's Done** - Completed work and follow-ups
 5. **What's Next** - Pending subtasks ready to spawn
+6. **Coordination State** - Messages, reservations, worktrees, reviews
 
 ---
 
@@ -426,7 +439,53 @@ function buildDynamicSwarmState(state: SwarmState): string {
   }
   
   parts.push(`**Project:** ${state.projectPath}\n`);
-  
+
+  // Recent swarmmail messages
+  if (state.recent_messages && state.recent_messages.length > 0) {
+    parts.push(`## 📬 Recent Messages\n`);
+    for (const msg of state.recent_messages) {
+      parts.push(`- **${msg.from}**: ${msg.subject} (${msg.timestamp})`);
+    }
+    parts.push("");
+  }
+
+  // Active file reservations
+  if (state.active_reservations && state.active_reservations.length > 0) {
+    parts.push(`## 🔒 Active File Reservations\n`);
+    for (const res of state.active_reservations) {
+      parts.push(`- **${res.agent}**: ${res.files.join(", ")} (since ${res.since})`);
+    }
+    parts.push("");
+  }
+
+  // Active worktrees
+  if (state.active_worktrees && state.active_worktrees.length > 0) {
+    parts.push(`## 🌳 Active Worktrees\n`);
+    for (const wt of state.active_worktrees) {
+      parts.push(`- ${wt.task_id}: ${wt.path} (branch: ${wt.branch})`);
+    }
+    parts.push("");
+  }
+
+  // Blocked tasks
+  if (state.blocked_tasks && state.blocked_tasks.length > 0) {
+    parts.push(`## 🚫 Blocked Tasks\n`);
+    for (const bt of state.blocked_tasks) {
+      const deps = bt.blocked_by.length > 0 ? ` (blocked by: ${bt.blocked_by.join(", ")})` : "";
+      parts.push(`- **${bt.bead_id}**: ${bt.title} - ${bt.reason}${deps}`);
+    }
+    parts.push("");
+  }
+
+  // Recent reviews
+  if (state.recent_reviews && state.recent_reviews.length > 0) {
+    parts.push(`## 📋 Recent Reviews\n`);
+    for (const rv of state.recent_reviews) {
+      parts.push(`- ${rv.bead_id}: ${rv.status} (attempt ${rv.attempt}, ${rv.timestamp})`);
+    }
+    parts.push("");
+  }
+
   return parts.join("\n");
 }
 
@@ -771,6 +830,11 @@ interface SwarmState {
     open: number;
     blocked: number;
   };
+  recent_messages?: Array<{ from: string; subject: string; timestamp: string }>;
+  active_reservations?: Array<{ agent: string; files: string[]; since: string }>;
+  active_worktrees?: Array<{ task_id: string; path: string; branch: string }>;
+  blocked_tasks?: Array<{ bead_id: string; title: string; reason: string; blocked_by: string[] }>;
+  recent_reviews?: Array<{ bead_id: string; status: string; attempt: number; timestamp: string }>;
 }
 
 /**
@@ -916,7 +980,89 @@ async function detectSwarm(
             state.subtasks.in_progress = epicSubtasks.filter((c) => c.status === "in_progress").length;
             state.subtasks.open = epicSubtasks.filter((c) => c.status === "open").length;
             state.subtasks.blocked = epicSubtasks.filter((c) => c.status === "blocked").length;
-            
+
+            // Populate blocked task details
+            const blockedCells = epicSubtasks.filter((c) => c.status === "blocked");
+            if (blockedCells.length > 0) {
+              state.blocked_tasks = blockedCells.map((c) => ({
+                bead_id: c.id,
+                title: c.title || "untitled",
+                reason: "blocked",
+                blocked_by: [],
+              }));
+            }
+
+            // Populate recent messages from swarmmail
+            try {
+              const { getSwarmInbox } = await import("swarm-mail");
+              const inbox = await getSwarmInbox({
+                projectPath: projectKey,
+                agentName: "coordinator",
+                limit: 5,
+                includeBodies: false,
+              });
+              if (inbox.messages.length > 0) {
+                state.recent_messages = inbox.messages.map((m: any) => ({
+                  from: m.from_agent || "unknown",
+                  subject: m.subject || "no subject",
+                  timestamp: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
+                }));
+              }
+            } catch (error) {
+              log.debug(
+                { error: error instanceof Error ? error.message : String(error) },
+                "failed to query recent messages",
+              );
+            }
+
+            // Populate active reservations
+            try {
+              const { getActiveReservations } = await import("swarm-mail");
+              const reservations = await getActiveReservations(projectKey);
+              if (reservations.length > 0) {
+                state.active_reservations = reservations.map((r: any) => ({
+                  agent: r.agent_name || "unknown",
+                  files: r.paths || [],
+                  since: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+                }));
+              }
+            } catch (error) {
+              log.debug(
+                { error: error instanceof Error ? error.message : String(error) },
+                "failed to query active reservations",
+              );
+            }
+
+            // Active worktrees are tracked in swarm-worktree.ts, not as events
+            // For compaction, we skip populating this field as it requires separate queries
+            state.active_worktrees = [];
+
+            // Populate recent reviews
+            try {
+              const { readEvents } = await import("swarm-mail");
+              const reviewEvents = await readEvents({
+                projectKey,
+                types: ["review_completed"],
+              }, projectKey);
+              const recentReviews = reviewEvents
+                .filter((e: any) => e.type === "review_completed")
+                .slice(-5)
+                .map((e: any) => ({
+                  bead_id: e.bead_id || "unknown",
+                  status: e.status || "unknown",
+                  attempt: e.attempt || 1,
+                  timestamp: e.timestamp ? new Date(e.timestamp).toISOString() : new Date().toISOString(),
+                }));
+              if (recentReviews.length > 0) {
+                state.recent_reviews = recentReviews;
+              }
+            } catch (error) {
+              log.debug(
+                { error: error instanceof Error ? error.message : String(error) },
+                "failed to query recent reviews",
+              );
+            }
+
             log.debug(
               {
                 epic_id: state.epicId,

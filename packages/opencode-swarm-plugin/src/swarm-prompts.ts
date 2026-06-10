@@ -1610,6 +1610,7 @@ export async function formatSubtaskPromptV2(params: {
   sibling_workers?: string;
   worktree_path?: string;
   start_time?: string;
+  previous_handoff_notes?: string;
 }): Promise<string> {
   const fileList =
     params.files.length > 0
@@ -1696,6 +1697,12 @@ export async function formatSubtaskPromptV2(params: {
     startTimeSection = `\n## [START TIME]\n\nWorker started at: ${params.start_time}`;
   }
 
+  // Build previous handoff notes section
+  let handoffNotesSection = "";
+  if (params.previous_handoff_notes) {
+    handoffNotesSection = `\n## [PREVIOUS SESSION HANDOFF]\n\nThe previous session ended with these notes:\n${params.previous_handoff_notes}\n\nUse this context to understand what was done before and what comes next.`;
+  }
+
   // Generate WorkerHandoff contract (machine-readable section)
   const handoff = generateWorkerHandoff({
     task_id: params.bead_id,
@@ -1722,7 +1729,7 @@ export async function formatSubtaskPromptV2(params: {
     : params.shared_context || "(none)";
 
   // Combine all new sections
-  const newSections = projectContextSection + siblingWorkersSection + worktreeSection + startTimeSection;
+  const newSections = projectContextSection + siblingWorkersSection + worktreeSection + startTimeSection + handoffNotesSection;
 
   return SUBTASK_PROMPT_V2.replace(/{bead_id}/g, params.bead_id)
     .replace(/{epic_id}/g, params.epic_id)
@@ -1891,6 +1898,10 @@ export const swarm_spawn_subtask = tool({
       .array(tool.schema.string())
       .optional()
       .describe("Bead IDs this subtask depends on; task is blocked until these complete"),
+    previous_handoff_notes: tool.schema
+      .string()
+      .optional()
+      .describe("Handoff notes from previous session (from hive_session_start)"),
   },
   async execute(args, _ctx) {
     if (args.depends_on && args.depends_on.length > 0 && args.project_path) {
@@ -1946,6 +1957,7 @@ export const swarm_spawn_subtask = tool({
       sibling_workers: siblingWorkers,
       worktree_path: args.worktree_path,
       start_time: args.start_time,
+      previous_handoff_notes: args.previous_handoff_notes,
     });
 
     // Import selectWorkerModel at function scope to avoid circular dependencies
