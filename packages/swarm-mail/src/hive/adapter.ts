@@ -27,7 +27,7 @@
  */
 
 import type { DatabaseAdapter } from "../types/database.js";
-import type { HiveAdapter } from "../types/hive-adapter.js";
+import type { HiveAdapter, MemoryDefaultRepairStats } from "../types/hive-adapter.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -644,6 +644,66 @@ export function createHiveAdapter(
       // Rebuild cache for all beads in project (import at runtime)
       const { rebuildAllBlockedCaches } = await import("./dependencies.js");
       await rebuildAllBlockedCaches(db, projectKeyParam);
+    },
+
+    async repairMemoryDefaults(projectPath?) {
+      // Lazy import to avoid a circular dependency with db/migrations
+      const { MEMORY_REPAIR_COLUMNS } = await import(
+        "../db/migrations/memory-default-repair.js"
+      );
+
+      const byColumn: Record<string, Record<string, number>> = {};
+      let totalRepaired = 0;
+
+      for (const [table, columns] of Object.entries(MEMORY_REPAIR_COLUMNS)) {
+        byColumn[table] = {};
+        for (const column of columns) {
+          // Count rows that would be changed (have a quote-wrapped value
+          // or are exactly two single quotes). This is the same WHERE
+          // clause the migration uses, so the two stay in lock-step.
+          const countResult = await db.query<{ count: string }>(
+            `SELECT COUNT(*) as count FROM ${table}
+             WHERE ${column} IS NOT NULL
+               AND LENGTH(${column}) >= 2
+               AND (
+                 (LENGTH(${column}) = 2
+                    AND SUBSTR(${column}, 1, 1) = ''''
+                    AND SUBSTR(${column}, 2, 1) = '''')
+                 OR (SUBSTR(${column}, 1, 1) = ''''
+                     AND SUBSTR(${column}, -1) = '''')
+               )`,
+          );
+          const matched = parseInt(countResult.rows[0]?.count ?? "0", 10);
+
+          if (matched > 0) {
+            await db.exec(`
+              UPDATE ${table}
+              SET ${column} = CASE
+                WHEN LENGTH(${column}) = 2
+                     AND SUBSTR(${column}, 1, 1) = ''''
+                     AND SUBSTR(${column}, 2, 1) = '''' THEN NULL
+                WHEN LENGTH(${column}) >= 2
+                     AND SUBSTR(${column}, 1, 1) = ''''
+                     AND SUBSTR(${column}, -1) = '''' THEN SUBSTR(${column}, 2, LENGTH(${column}) - 2)
+                ELSE ${column}
+              END
+              WHERE ${column} IS NOT NULL
+                AND LENGTH(${column}) >= 2
+                AND (
+                  (LENGTH(${column}) = 2
+                     AND SUBSTR(${column}, 1, 1) = '''')
+                  OR (SUBSTR(${column}, 1, 1) = ''''
+                      AND SUBSTR(${column}, -1) = '''')
+                );
+            `);
+          }
+
+          byColumn[table][column] = matched;
+          totalRepaired += matched;
+        }
+      }
+
+      return { totalRepaired, byColumn };
     },
 
     // ============================================================================

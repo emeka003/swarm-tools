@@ -68,8 +68,10 @@ import {
   setCoordinatorContext,
   clearCoordinatorContext,
 } from "./planning-guardrails";
-import { checkCoordinatorGuard } from "./coordinator-guard";
+import { checkCoordinatorGuard, checkGitSafetyGate } from "./coordinator-guard";
+import { getSafetyConfig } from "./safety-config";
 import { createCompactionHook } from "./compaction-hook";
+import { wrapToolsWithTimeout, getToolTimeoutMs } from "./utils/timeouts";
 
 /**
  * OpenCode Swarm Plugin
@@ -111,6 +113,11 @@ const SwarmPlugin: Plugin = async (
   // Set the project directory for Swarm Mail (embedded event-sourced)
   // This ensures swarmmail_init uses the correct project path by default
   setSwarmMailProjectDirectory(directory);
+
+  // Central tool-execution timeout. Operators set SWARM_TOOL_TIMEOUT_MS to
+  // bound in-process tool handlers (default 300_000ms / 5 minutes). Each
+  // tool's `execute` is wrapped below in `wrapToolsWithTimeout`.
+  const toolTimeoutMs = getToolTimeoutMs();
 
   /** Track active sessions for cleanup */
   let activeAgentMailState: AgentMailState | null = null;
@@ -170,7 +177,7 @@ const SwarmPlugin: Plugin = async (
 	  * - hivemind:* - Unified memory system (learnings + sessions)
 	  * - contributor_lookup - GitHub contributor profile lookup with changeset credits
 	 */
-     tool: {
+     tool: wrapToolsWithTimeout({
       ...hiveTools,
       ...swarmMailTools,
       ...structuredTools,
@@ -186,7 +193,7 @@ const SwarmPlugin: Plugin = async (
       ...queueTools,
       // evalTools removed - evalite is devDependency, use `bunx evalite run` directly
       ...contributorTools,
-    },
+    }, toolTimeoutMs),
 
     /**
      * Event hook for session lifecycle
@@ -268,6 +275,19 @@ const SwarmPlugin: Plugin = async (
         if (violation.isViolation) {
           console.warn(`[swarm-plugin] ${violation.message}`);
         }
+      }
+
+      // Check git safety gate (applies to all agents, not just coordinators)
+      const gitSafetyResult = checkGitSafetyGate({
+        toolName,
+        toolArgs: output.args as Record<string, unknown>,
+        config: getSafetyConfig(),
+      });
+
+      if (!gitSafetyResult.allowed) {
+        throw new Error(
+          `Git safety gate blocked tool "${toolName}": ${gitSafetyResult.reason}`
+        );
       }
 
       // Capture epic ID when epic is created

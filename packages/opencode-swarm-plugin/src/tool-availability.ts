@@ -11,15 +11,24 @@
  * - beads (bd): DEPRECATED - Use hive instead (kept for backward compatibility)
  * - swarm-mail: Embedded multi-agent coordination (PGLite-based)
  * - agent-mail: DEPRECATED - Legacy MCP server (use swarm-mail instead)
+ *
+ * Timeouts respect `SWARM_TOOL_TIMEOUT_MS` via `./utils/timeouts` so operators
+ * have a single knob for the entire plugin.
  */
 
 import { checkSwarmHealth } from "swarm-mail";
+import { getToolTimeoutMs } from "./utils/timeouts";
 
 /** Default timeout for URL reachability checks in milliseconds */
 const DEFAULT_URL_TIMEOUT_MS = 2000;
 
-/** Timeout for bunx commands (semantic-memory check) in milliseconds */
-const BUNX_TIMEOUT_MS = 10000;
+/**
+ * Default timeout for bunx commands (semantic-memory check) in milliseconds.
+ * Falls back to `SWARM_TOOL_TIMEOUT_MS` (or 300_000ms) when the env var
+ * is set to a smaller value, so availability probes stay well below the
+ * tool-execution budget. If the env var is unset/zero, we use 10s.
+ */
+const BUNX_TIMEOUT_MS = Math.min(10_000, getToolTimeoutMs(10_000));
 
 export type ToolName =
   | "semantic-memory"

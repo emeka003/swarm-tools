@@ -8,6 +8,7 @@
  */
 
 import { captureCoordinatorEvent } from "./eval-capture.js";
+import { checkGitSafetyGate, type GitSafetyCheckResult } from "./coordinator-guard.js";
 
 /**
  * Patterns that suggest file modification work
@@ -372,6 +373,64 @@ export function detectCoordinatorViolation(params: {
   }
 
   return { isViolation: false };
+}
+
+/**
+ * Result of git safety violation detection
+ */
+export interface GitSafetyDetectionResult {
+  /** Whether a git safety violation was detected */
+  isViolation: boolean;
+
+  /** Reason the call would be blocked (mirrors `checkGitSafetyGate.reason`) */
+  reason?: string;
+
+  /** Underlying gate result, useful for callers that need the full payload */
+  gateResult: GitSafetyCheckResult;
+}
+
+/**
+ * Detect git safety violations in tool calls (analytics-only).
+ *
+ * Wraps `checkGitSafetyGate` and captures the event for evals when a
+ * violation is detected. Unlike `detectCoordinatorViolation`, this runs
+ * for any agent context — destructive git operations are dangerous
+ * regardless of role.
+ *
+ * @param params - Detection parameters
+ * @returns Detection result
+ */
+export function detectGitSafetyViolation(params: {
+  sessionId: string;
+  epicId: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  agentContext: "coordinator" | "worker" | string;
+}): GitSafetyDetectionResult {
+  const { sessionId, epicId, toolName, toolArgs, agentContext } = params;
+
+  const gateResult = checkGitSafetyGate({ toolName, toolArgs });
+
+  if (gateResult.allowed) {
+    return { isViolation: false, gateResult };
+  }
+
+  const payload = { tool: toolName, agent: agentContext, reason: gateResult.reason };
+
+  captureCoordinatorEvent({
+    session_id: sessionId,
+    epic_id: epicId,
+    timestamp: new Date().toISOString(),
+    event_type: "VIOLATION",
+    violation_type: "destructive_git_blocked",
+    payload,
+  });
+
+  return {
+    isViolation: true,
+    reason: gateResult.reason,
+    gateResult,
+  };
 }
 
 /**

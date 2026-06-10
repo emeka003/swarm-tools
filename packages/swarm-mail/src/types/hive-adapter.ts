@@ -672,6 +672,29 @@ export interface HiveSchemaAdapter {
     projectKey: string,
     projectPath?: string,
   ): Promise<void>;
+
+  /**
+   * Repair memory columns whose values were stored with the Drizzle
+   * default-quote bug.
+   *
+   * Strips leading and trailing apostrophe characters from affected
+   * columns in the memories and entities tables, mirroring the v13
+   * migration SQL. Returns counts of rows touched per column so callers
+   * can verify the repair took effect.
+   *
+   * Idempotent - re-running is a no-op once values are clean.
+   */
+  repairMemoryDefaults(projectPath?: string): Promise<MemoryDefaultRepairStats>;
+}
+
+/**
+ * Per-column repair statistics returned by `repairMemoryDefaults`.
+ */
+export interface MemoryDefaultRepairStats {
+  /** Total rows whose values were modified */
+  totalRepaired: number;
+  /** Per-table, per-column counts of rows whose value was changed */
+  byColumn: Record<string, Record<string, number>>;
 }
 
 // ============================================================================

@@ -1,11 +1,47 @@
 import { createClient } from "@libsql/client";
 import { eq } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { describe, expect, test } from "bun:test";
 import { createDrizzleClient } from "../drizzle.js";
-import { memories } from "./memory.js";
+import { memories, entities } from "./memory.js";
 import { EMBEDDING_DIM } from "../../memory/ollama.js";
 
 describe("Memory Schema", () => {
+  test("column defaults do not embed SQL quote characters", () => {
+    const columns = getTableConfig(memories).columns;
+    const columnByName = new Map(columns.map((c) => [c.name, c]));
+
+    const textColumnsWithDefaults = [
+      { name: "metadata", allowed: ["{}"] },
+      { name: "collection", allowed: ["default"] },
+      { name: "tags", allowed: ["[]"] },
+      { name: "status", allowed: ["active"] },
+      { name: "access_count", allowed: ["0"] },
+    ];
+
+    for (const { name, allowed } of textColumnsWithDefaults) {
+      const col = columnByName.get(name);
+      expect(col).toBeDefined();
+      const defaultValue = (col as any).default;
+      expect(defaultValue).toBeDefined();
+      const stringValue = String(defaultValue);
+      expect(stringValue.startsWith("'")).toBe(false);
+      expect(stringValue.endsWith("'")).toBe(false);
+      expect(allowed).toContain(stringValue);
+    }
+  });
+
+  test("entity column defaults do not embed SQL quote characters", () => {
+    const columns = getTableConfig(entities).columns;
+    const columnByName = new Map(columns.map((c) => [c.name, c]));
+    const altLabels = columnByName.get("alt_labels");
+    expect(altLabels).toBeDefined();
+    const defaultValue = String((altLabels as any).default);
+    expect(defaultValue.startsWith("'")).toBe(false);
+    expect(defaultValue.endsWith("'")).toBe(false);
+    expect(defaultValue).toBe("[]");
+  });
+
   test("creates memories table with correct structure", async () => {
     const libsqlClient = createClient({ url: ":memory:" });
 

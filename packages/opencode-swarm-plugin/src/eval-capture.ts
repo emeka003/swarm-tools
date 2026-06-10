@@ -14,7 +14,7 @@
  *
  * Event types (stored as coordinator_decision, coordinator_violation, etc.):
  * - DECISION: strategy_selected, worker_spawned, review_completed, decomposition_complete, researcher_spawned, skill_loaded, inbox_checked, blocker_resolved, scope_change_approved, scope_change_rejected
- * - VIOLATION: coordinator_edited_file, coordinator_ran_tests, coordinator_reserved_files, no_worker_spawned, worker_completed_without_review
+ * - VIOLATION: coordinator_edited_file, coordinator_ran_tests, coordinator_reserved_files, no_worker_spawned, worker_completed_without_review, destructive_git_blocked
  * - OUTCOME: subtask_success, subtask_retry, subtask_failed, epic_complete, blocker_detected
  * - COMPACTION: detection_complete, prompt_generated, context_injected, resumption_started, tool_call_tracked
  *
@@ -165,6 +165,7 @@ export const CoordinatorEventSchema = z.discriminatedUnion("event_type", [
       "coordinator_reserved_files",
       "no_worker_spawned",
       "worker_completed_without_review",
+      "destructive_git_blocked",
     ]),
     payload: z.any(),
   }),

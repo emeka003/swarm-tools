@@ -38,6 +38,7 @@ import {
 import { fileURLToPath } from "url";
 import matter from "gray-matter";
 import { getSwarmMailLibSQL, createEvent } from "swarm-mail";
+import { getToolTimeoutMs } from "./utils/timeouts";
 
 // =============================================================================
 // Types
@@ -702,7 +703,7 @@ Scripts run in the skill's directory with the project directory as an argument.`
     const scriptPath = join(skill.directory, "scripts", args.script);
     const scriptArgs = args.args || [];
 
-    const TIMEOUT_MS = args.timeout_ms ?? 60_000; // 60 second default timeout
+    const TIMEOUT_MS = args.timeout_ms ?? getToolTimeoutMs(60_000); // 60s default, capped by SWARM_TOOL_TIMEOUT_MS
     const proc = Bun.spawn(
       [scriptPath, skillsProjectDirectory, ...scriptArgs],
       {

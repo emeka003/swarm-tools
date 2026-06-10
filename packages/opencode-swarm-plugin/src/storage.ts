@@ -36,6 +36,7 @@ import type { PatternMaturity, MaturityFeedback } from "./pattern-maturity";
 import { InMemoryFeedbackStorage } from "./learning";
 import { InMemoryPatternStorage } from "./anti-patterns";
 import { InMemoryMaturityStorage } from "./pattern-maturity";
+import { getToolTimeoutMs, ToolTimeoutError } from "./utils/timeouts";
 
 // ============================================================================
 // Command Resolution
@@ -84,9 +85,15 @@ async function execSemanticMemory(
     });
 
     try {
-      const TIMEOUT_MS = 30_000;
+      const TIMEOUT_MS = Math.min(30_000, getToolTimeoutMs(30_000));
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Process timed out after 30s")), TIMEOUT_MS)
+        setTimeout(
+          () =>
+            reject(
+              new ToolTimeoutError("semantic-memory", TIMEOUT_MS),
+            ),
+          TIMEOUT_MS,
+        ),
       );
 
       const stdout = Buffer.from(await new Response(proc.stdout).arrayBuffer());

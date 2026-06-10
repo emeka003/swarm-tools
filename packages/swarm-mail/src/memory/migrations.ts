@@ -29,6 +29,10 @@
  */
 
 import type { Migration } from "../streams/migrations.js";
+import {
+  memoryDefaultRepairMigration,
+  memoryDefaultRepairMigrationLibSQL,
+} from "../db/migrations/memory-default-repair.js";
 
 /**
  * Migration v9: Add memory tables
@@ -352,12 +356,16 @@ export const memorySelfHealColumnsLibSQL: Migration = {
 /**
  * Export memory migrations array
  */
-export const memoryMigrations: Migration[] = [memoryMigration];
+export const memoryMigrations: Migration[] = [
+  memoryMigration,
+  memoryDefaultRepairMigration,
+];
 export const memoryMigrationsLibSQL: Migration[] = [
   memoryMigrationLibSQL,
   memorySchemaOverhaulLibSQL,
   sessionMetadataExtensionLibSQL,
   memorySelfHealColumnsLibSQL,
+  memoryDefaultRepairMigrationLibSQL,
 ];
 
 /**
