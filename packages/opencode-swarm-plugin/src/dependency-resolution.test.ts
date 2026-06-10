@@ -163,6 +163,27 @@ describe("dependency-resolution", () => {
       );
     });
 
+    test("detects transitive cycles (3+ node)", async () => {
+      const subtasks = [
+        { bead_id: "a", depends_on: ["b"] },
+        { bead_id: "b", depends_on: ["c"] },
+        { bead_id: "c", depends_on: ["a"] },
+      ];
+
+      const result = await validateDependencies({
+        hive,
+        project_key: projectKey,
+        epic_id: epicId,
+        subtasks,
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("Cycle detected"))).toBe(
+        true,
+      );
+      expect(result.errors.some((e) => e.includes("→"))).toBe(true);
+    });
+
     test("detects missing dependency references", async () => {
       const subtasks = [{ bead_id: "a", depends_on: ["nonexistent"] }];
 

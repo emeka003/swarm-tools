@@ -97,21 +97,26 @@ export async function validateDependencies(params: {
 
     const visited = new Set<string>();
     const recursionStack = new Set<string>();
+    const path: string[] = [];
 
     function dfs(node: string): boolean {
       visited.add(node);
       recursionStack.add(node);
+      path.push(node);
 
       const deps = graph.get(node) ?? [];
       for (const dep of deps) {
         if (!visited.has(dep)) {
           if (dfs(dep)) return true;
         } else if (recursionStack.has(dep)) {
-          errors.push(`Cycle detected involving bead ${dep}`);
+          const cycleStart = path.indexOf(dep);
+          const cyclePath = path.slice(cycleStart).concat(dep);
+          errors.push(`Cycle detected: ${cyclePath.join(" → ")}`);
           return true;
         }
       }
 
+      path.pop();
       recursionStack.delete(node);
       return false;
     }

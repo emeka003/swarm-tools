@@ -1,7 +1,6 @@
 ---
 name: background-worker
 description: Runs background-only tasks without MCP tool access.
-model: haiku
 skills:
   - always-on-guidance
   - swarm-coordination

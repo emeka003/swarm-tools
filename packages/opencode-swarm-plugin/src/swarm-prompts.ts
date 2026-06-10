@@ -1893,29 +1893,23 @@ export const swarm_spawn_subtask = tool({
       .describe("Bead IDs this subtask depends on; task is blocked until these complete"),
   },
   async execute(args, _ctx) {
-    // Check dependencies if provided
     if (args.depends_on && args.depends_on.length > 0 && args.project_path) {
-      try {
-        const { getHiveAdapter } = await import("./hive.js");
-        const hive = await getHiveAdapter(args.project_path);
-        const { getReadySubtasks } = await import("./dependency-resolution.js");
-        const ready = await getReadySubtasks({
-          hive,
-          project_key: args.project_path,
-          epic_id: args.epic_id,
-          subtasks: [{
-            bead_id: args.bead_id,
-            title: args.subtask_title,
-            depends_on: args.depends_on,
-          }],
-        });
-        if (ready.length > 0 && !ready[0].ready) {
-          const blocking = ready[0].blocking_deps.map(d => `${d.bead_id} (${d.status})`).join(", ");
-          throw new Error(`Cannot spawn subtask ${args.bead_id}: blocked by dependencies [${blocking}]`);
-        }
-      } catch (error) {
-        // If dependency check fails, log warning but continue (coordinator may have manual override)
-        console.warn("[swarm_spawn_subtask] Dependency check failed:", error);
+      const { getHiveAdapter } = await import("./hive.js");
+      const hive = await getHiveAdapter(args.project_path);
+      const { getReadySubtasks } = await import("./dependency-resolution.js");
+      const ready = await getReadySubtasks({
+        hive,
+        project_key: args.project_path,
+        epic_id: args.epic_id,
+        subtasks: [{
+          bead_id: args.bead_id,
+          title: args.subtask_title,
+          depends_on: args.depends_on,
+        }],
+      });
+      if (ready.length > 0 && !ready[0].ready) {
+        const blocking = ready[0].blocking_deps.map(d => `${d.bead_id} (${d.status})`).join(", ");
+        throw new Error(`Cannot spawn subtask ${args.bead_id}: blocked by dependencies [${blocking}]`);
       }
     }
 

@@ -1,7 +1,6 @@
 ---
 name: worker
 description: Executes a single subtask with file reservations and progress reporting.
-model: sonnet
 skills:
   - always-on-guidance
   - swarm-coordination
