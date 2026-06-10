@@ -5134,7 +5134,7 @@
 {"id":"mem-ffef25a7646f183d","information":"For stats CLI promo reports, @effect/platform HttpClient can be backed by global fetch without DOM libs by defining a minimal WebFetch/WebResponse type and using HttpClient.make + HttpClientResponse.fromWeb(request, response as Response). This avoids pulling DOM types while still satisfying kit/stripe clients.","created_at":"2026-01-10T17:38:46.910Z","tags":"stats,cli,effect,httpclient,fetch,typescript"}
 {"id":"mem-malformed-date","information":"Memory with malformed date","created_at":"not-a-real-date"}
 {"id":"mem-null-date","information":"Memory with null date","created_at":null}
-{"id":"mem-undefined-date","information":"Memory with undefined date","created_at":"2026-06-10 08:09:20"}
+{"id":"mem-undefined-date","information":"Memory with undefined date","created_at":"2026-06-10 13:09:44"}
 {"id":"mem-valid-date","information":"Memory with valid date","created_at":"2025-01-01T00:00:00.000Z"}
 {"id":"mem_mjbteazb_g1swqjm","information":"Test memory for tools integration","created_at":"2025-12-18T19:09:38.711Z","tags":"test"}
 {"id":"mem_mjbteb35_o8xwaxn","information":"Findable test memory with unique keyword xyztest123","created_at":"2025-12-18T19:09:38.849Z"}

@@ -1604,6 +1604,12 @@ export async function formatSubtaskPromptV2(params: {
     skills_to_load?: string[];
     coordinator_notes?: string;
   };
+  coding_conventions?: string;
+  test_commands?: string;
+  git_context?: string;
+  sibling_workers?: string;
+  worktree_path?: string;
+  start_time?: string;
 }): Promise<string> {
   const fileList =
     params.files.length > 0
@@ -1654,6 +1660,42 @@ export async function formatSubtaskPromptV2(params: {
     }
   }
 
+  // Build project context section
+  let projectContextSection = "";
+  const projectContextParts: string[] = [];
+  
+  if (params.coding_conventions) {
+    projectContextParts.push(`Coding conventions:\n${params.coding_conventions}`);
+  }
+  if (params.test_commands) {
+    projectContextParts.push(`Test commands:\n${params.test_commands}`);
+  }
+  if (params.git_context) {
+    projectContextParts.push(`Git context:\n${params.git_context}`);
+  }
+  
+  if (projectContextParts.length > 0) {
+    projectContextSection = `\n## [PROJECT CONTEXT]\n\n${projectContextParts.join("\n\n")}`;
+  }
+
+  // Build sibling workers section
+  let siblingWorkersSection = "";
+  if (params.sibling_workers) {
+    siblingWorkersSection = `\n## [SIBLING WORKERS]\n\n${params.sibling_workers}`;
+  }
+
+  // Build worktree section
+  let worktreeSection = "";
+  if (params.worktree_path) {
+    worktreeSection = `\n## [WORKTREE]\n\nWorktree path: ${params.worktree_path}`;
+  }
+
+  // Build start time section
+  let startTimeSection = "";
+  if (params.start_time) {
+    startTimeSection = `\n## [START TIME]\n\nWorker started at: ${params.start_time}`;
+  }
+
   // Generate WorkerHandoff contract (machine-readable section)
   const handoff = generateWorkerHandoff({
     task_id: params.bead_id,
@@ -1679,6 +1721,8 @@ export async function formatSubtaskPromptV2(params: {
     ? `${params.shared_context || "(none)"}\n\n${insights}`
     : params.shared_context || "(none)";
 
+  // Combine all new sections
+  const newSections = projectContextSection + siblingWorkersSection + worktreeSection + startTimeSection;
 
   return SUBTASK_PROMPT_V2.replace(/{bead_id}/g, params.bead_id)
     .replace(/{epic_id}/g, params.epic_id)
@@ -1691,7 +1735,7 @@ export async function formatSubtaskPromptV2(params: {
     .replace("{file_list}", fileList)
     .replace("{shared_context}", sharedContextWithInsights)
     .replace("{compressed_context}", compressedSection)
-    .replace("{error_context}", errorSection + recoverySection + handoffSection);
+    .replace("{error_context}", errorSection + recoverySection + handoffSection + newSections);
 }
 
 /**
@@ -1807,6 +1851,30 @@ export const swarm_spawn_subtask = tool({
       .describe(
         "Absolute project path for swarmmail_init (REQUIRED for tracking)",
       ),
+    coding_conventions: tool.schema
+      .string()
+      .optional()
+      .describe("Project coding conventions from AGENTS.md or similar"),
+    test_commands: tool.schema
+      .string()
+      .optional()
+      .describe("Available test commands (e.g., 'bun test src/{file}.test.ts')"),
+    git_context: tool.schema
+      .string()
+      .optional()
+      .describe("Current git branch, recent commits, dirty files"),
+    sibling_workers: tool.schema
+      .string()
+      .optional()
+      .describe("Active sibling workers and their file reservations"),
+    worktree_path: tool.schema
+      .string()
+      .optional()
+      .describe("Path to git worktree for isolated execution"),
+    start_time: tool.schema
+      .string()
+      .optional()
+      .describe("ISO timestamp when worker started"),
     recovery_context: tool.schema
       .object({
         shared_context: tool.schema.string().optional(),
@@ -1819,8 +1887,55 @@ export const swarm_spawn_subtask = tool({
       .string()
       .optional()
       .describe("Optional explicit model override (auto-selected if not provided)"),
+    depends_on: tool.schema
+      .array(tool.schema.string())
+      .optional()
+      .describe("Bead IDs this subtask depends on; task is blocked until these complete"),
   },
   async execute(args, _ctx) {
+    // Check dependencies if provided
+    if (args.depends_on && args.depends_on.length > 0 && args.project_path) {
+      try {
+        const { getHiveAdapter } = await import("./hive.js");
+        const hive = await getHiveAdapter(args.project_path);
+        const { getReadySubtasks } = await import("./dependency-resolution.js");
+        const ready = await getReadySubtasks({
+          hive,
+          project_key: args.project_path,
+          epic_id: args.epic_id,
+          subtasks: [{
+            bead_id: args.bead_id,
+            title: args.subtask_title,
+            depends_on: args.depends_on,
+          }],
+        });
+        if (ready.length > 0 && !ready[0].ready) {
+          const blocking = ready[0].blocking_deps.map(d => `${d.bead_id} (${d.status})`).join(", ");
+          throw new Error(`Cannot spawn subtask ${args.bead_id}: blocked by dependencies [${blocking}]`);
+        }
+      } catch (error) {
+        // If dependency check fails, log warning but continue (coordinator may have manual override)
+        console.warn("[swarm_spawn_subtask] Dependency check failed:", error);
+      }
+    }
+
+    // Auto-fetch sibling worker context if project_path and epic_id are provided
+    let siblingWorkers = args.sibling_workers;
+    if (!siblingWorkers && args.project_path && args.epic_id) {
+      try {
+        const { getSiblingWorkerContext } = await import("./sibling-context.js");
+        const siblingContext = await getSiblingWorkerContext({
+          project_path: args.project_path,
+          current_bead_id: args.bead_id,
+          epic_id: args.epic_id,
+        });
+        siblingWorkers = siblingContext.summary;
+      } catch (error) {
+        // Silently ignore errors - sibling context is optional
+        console.warn("[swarm_spawn_subtask] Failed to fetch sibling context:", error);
+      }
+    }
+
     const prompt = await formatSubtaskPromptV2({
       bead_id: args.bead_id,
       epic_id: args.epic_id,
@@ -1831,6 +1946,12 @@ export const swarm_spawn_subtask = tool({
       project_path: args.project_path,
       recovery_context: args.recovery_context,
       model: args.model,
+      coding_conventions: args.coding_conventions,
+      test_commands: args.test_commands,
+      git_context: args.git_context,
+      sibling_workers: siblingWorkers,
+      worktree_path: args.worktree_path,
+      start_time: args.start_time,
     });
 
     // Import selectWorkerModel at function scope to avoid circular dependencies
