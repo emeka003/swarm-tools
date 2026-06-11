@@ -790,10 +790,87 @@ export function markReviewRejected(taskId: string): void {
 }
 
 // ============================================================================
+// Review Aggregation
+// ============================================================================
+
+/**
+ * Aggregate review feedback from multiple reviewers
+ *
+ * Combines results from parallel review stages into a single
+ * pass/fail decision based on the configured aggregation strategy.
+ */
+export const swarm_aggregate_reviews = tool({
+  description:
+    "Aggregate review feedback from multiple reviewers. Combines parallel review results into a single pass/fail decision.",
+  args: {
+    bead_id: z.string().describe("Cell ID being reviewed"),
+    reviews: z
+      .array(
+        z.object({
+          reviewer: z.string().describe("Reviewer agent name"),
+          passed: z.boolean().describe("Whether this review passed"),
+          issues: z
+            .array(z.string())
+            .describe("Issues found by this reviewer"),
+        })
+      )
+      .describe("Array of review results from parallel reviewers"),
+    aggregation: z
+      .enum(["all_must_pass", "majority", "any"])
+      .describe("Aggregation strategy"),
+  },
+  async execute(args): Promise<string> {
+    const results = args.reviews.map((r) => ({
+      stage: r.reviewer,
+      reviewer: r.reviewer,
+      passed: r.passed,
+      issues: r.issues,
+    }));
+
+    let passed: boolean;
+    switch (args.aggregation) {
+      case "all_must_pass":
+        passed = results.every((r) => r.passed);
+        break;
+      case "majority": {
+        const passCount = results.filter((r) => r.passed).length;
+        passed = passCount > results.length / 2;
+        break;
+      }
+      case "any":
+        passed = results.some((r) => r.passed);
+        break;
+    }
+
+    const allIssues = results
+      .filter((r) => !r.passed)
+      .flatMap((r) => r.issues);
+
+    return JSON.stringify(
+      {
+        bead_id: args.bead_id,
+        passed,
+        aggregation: args.aggregation,
+        reviewers: results.length,
+        passed_count: results.filter((r) => r.passed).length,
+        failed_count: results.filter((r) => !r.passed).length,
+        issues: allIssues,
+        summary: passed
+          ? `Review passed (${results.filter((r) => r.passed).length}/${results.length} reviewers passed)`
+          : `Review failed (${results.filter((r) => !r.passed).length}/${results.length} reviewers failed)`,
+      },
+      null,
+      2
+    );
+  },
+});
+
+// ============================================================================
 // Exports
 // ============================================================================
 
 export const reviewTools = {
   swarm_review,
   swarm_review_feedback,
+  swarm_aggregate_reviews,
 };

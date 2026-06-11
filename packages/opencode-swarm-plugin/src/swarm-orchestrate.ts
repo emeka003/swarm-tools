@@ -83,6 +83,13 @@ import {
   isReviewApproved,
   getReviewStatus,
 } from "./swarm-review";
+import {
+  runParallelReviews,
+  aggregateReviews,
+  DEFAULT_REVIEW_PIPELINE,
+  type ParallelReviewConfig,
+  type ReviewResult,
+} from "./parallel-review";
 import { getGitCommitInfo } from "./utils/git-commit-info";
 import { captureCoordinatorEvent, type EvalRecord } from "./eval-capture.js";
 import { formatResearcherPrompt } from "./swarm-prompts";
@@ -95,6 +102,7 @@ import {
   runQualityGates,
   type QualityGateResult,
 } from "./quality-gates";
+import { autoRecoverOnStartup, type RecoveryResult } from "./swarm-recovery";
 
 // ============================================================================
 // Helper Functions
@@ -573,6 +581,22 @@ export const swarm_init = tool({
       }
     }
 
+    let recovery: RecoveryResult | undefined;
+    if (args.project_path) {
+      try {
+        recovery = await autoRecoverOnStartup({
+          project_path: args.project_path,
+        });
+        if (recovery.recovered) {
+          warnings.push(
+            `⚠️  Incomplete swarm detected: epic ${recovery.epic_id} has ${recovery.active_workers?.length ?? 0} in-progress worker(s). Recovery data available.`,
+          );
+        }
+      } catch {
+        // Non-fatal - recovery is best-effort
+      }
+    }
+
     return JSON.stringify(
       {
         ready: true,
@@ -581,6 +605,7 @@ export const swarm_init = tool({
           session_id: sessionInfo.session_id,
           previous_handoff_notes: sessionInfo.previous_handoff_notes,
         } : undefined,
+        recovery: recovery?.recovered ? recovery : undefined,
         tool_availability: Object.fromEntries(
           Array.from(availability.entries()).map(([k, v]) => [
             k,
@@ -1051,6 +1076,20 @@ export const swarm_complete = tool({
       .string()
       .optional()
       .describe("Git branch (auto-detected if not provided)"),
+    parallel_review_config: tool.schema
+      .object({
+        stages: tool.schema.array(
+          tool.schema.object({
+            name: tool.schema.string(),
+            reviewer: tool.schema.string(),
+            criteria: tool.schema.array(tool.schema.string()),
+            required: tool.schema.boolean(),
+          })
+        ),
+        aggregation: tool.schema.enum(["all_must_pass", "majority", "any"]),
+      })
+      .optional()
+      .describe("Parallel review pipeline configuration. When provided, runs multi-stage parallel reviews instead of single reviewer."),
   },
   async execute(args, _ctx) {
     // Validate required parameters with helpful error messages
@@ -1085,6 +1124,43 @@ export const swarm_complete = tool({
 
     // Check review gate (unless skipped) - BEFORE try block so errors are clear
     if (!args.skip_review) {
+      // Use parallel reviews if config is provided
+      if (args.parallel_review_config) {
+        const parallelConfig: ParallelReviewConfig = {
+          stages: args.parallel_review_config.stages,
+          aggregation: args.parallel_review_config.aggregation,
+        };
+
+        const parallelResult = await runParallelReviews({
+          project_path: args.project_key,
+          bead_id: args.bead_id,
+          files: args.files_touched || [],
+          config: parallelConfig,
+        });
+
+        if (!parallelResult.passed) {
+          return JSON.stringify(
+            {
+              success: true,
+              status: "needs_changes",
+              parallel_review: {
+                passed: false,
+                aggregation: parallelConfig.aggregation,
+                results: parallelResult.results,
+                issues: parallelResult.issues,
+              },
+              message: `Parallel review failed: ${parallelResult.issues.length} issue(s) found across stages.`,
+              next_steps: [
+                "Address the issues found by reviewers",
+                "Fix the problems and call swarm_complete again",
+              ],
+            },
+            null,
+            2,
+          );
+        }
+      }
+
       const reviewStatusResult = getReviewStatus(args.bead_id);
 
       if (!reviewStatusResult.approved) {

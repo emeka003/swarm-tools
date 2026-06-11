@@ -11,6 +11,7 @@
  */
 
 import type { DecomposedSubtask } from "./schemas/task";
+import { assessTaskRisk } from "./risk-assessment";
 
 /**
  * Configuration interface for swarm models
@@ -38,14 +39,22 @@ export function selectWorkerModel(
   subtask: DecomposedSubtask & { model?: string },
   config: SwarmConfig,
 ): string {
-  // Priority 1: Explicit model in subtask
   if (subtask.model) {
     return subtask.model;
   }
 
   const files = subtask.files || [];
 
-  // Priority 2: File-type inference
+  const risk = assessTaskRisk({
+    title: subtask.title,
+    description: subtask.description,
+    files,
+  });
+
+  if (risk.risk_level === "critical" || risk.risk_level === "high") {
+    return config.primaryModel || "anthropic/claude-sonnet-4-5";
+  }
+
   if (files.length > 0) {
     const allDocs = files.every((f) => {
       const lower = f.toLowerCase();
@@ -58,11 +67,9 @@ export function selectWorkerModel(
     });
 
     if (allDocs || allTests) {
-      // Use lite model if configured, otherwise fall back to primary
       return config.liteModel || config.primaryModel || "anthropic/claude-haiku-4-5";
     }
   }
 
-  // Priority 3: Default to primary model
   return config.primaryModel || "anthropic/claude-haiku-4-5";
 }

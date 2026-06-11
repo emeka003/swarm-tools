@@ -50,6 +50,7 @@ import { queueTools } from "./queue-tools";
 // NOTE: evalTools removed from main bundle - evalite is a devDependency
 // Use `bunx evalite run` directly for running evals
 import { contributorTools } from "./contributor-tools";
+import { decisionTraceTools } from "./decision-trace-tools";
 import {
   guardrailOutput,
   DEFAULT_GUARDRAIL_CONFIG,
@@ -189,6 +190,7 @@ const SwarmPlugin: Plugin = async (
       ...queueTools,
       // evalTools removed - evalite is devDependency, use `bunx evalite run` directly
       ...contributorTools,
+      ...decisionTraceTools,
     }, toolTimeoutMs),
 
     /**
@@ -637,6 +639,11 @@ export {
   getSchemaByName,
 } from "./structured";
 
+export {
+  assessTaskRisk,
+  type RiskAssessment,
+} from "./risk-assessment";
+
 /**
  * Re-export swarm module
  *
@@ -698,6 +705,7 @@ export const allTools = {
   ...researchTools,
   ...queueTools,
   ...contributorTools,
+  ...decisionTraceTools,
 } as const;
 
 /**
